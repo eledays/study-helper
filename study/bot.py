@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, date, timedelta, UTC
 from uuid import uuid4
 from zoneinfo import ZoneInfo
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher
 from aiogram.filters import Command, CommandStart
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery
 from aiogram.exceptions import TelegramForbiddenError, TelegramAPIError
@@ -65,6 +65,12 @@ def mood_keyboard(kind, day):
 
 def router(db, settings):
     dp = Dispatcher()
+    async def private_message(message):
+        return message.chat.type == 'private'
+    async def private_callback(call):
+        return call.message is not None and call.message.chat.type == 'private'
+    dp.message.filter(private_message)
+    dp.callback_query.filter(private_callback)
 
     async def ask_wellbeing(message,s,user,day):
         if not user.wellbeing: return
