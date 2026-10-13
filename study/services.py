@@ -1,4 +1,5 @@
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
+from zoneinfo import ZoneInfo
 from uuid import uuid4
 from sqlalchemy import select, delete
 from .models import User, Subject, Task, Goal, Slot, Activity, Score, Daily
@@ -38,11 +39,11 @@ def parse_scale(rows):
 
 
 def record_activity(s, actor_id, student_id, subject_id, day, kind, values, request_key, title=''):
-    accessible(s, actor_id, student_id, results=True)
+    student = accessible(s, actor_id, student_id, results=True)
     subject = subject_for(s, student_id, subject_id)
     if kind not in ('practice', 'test', 'exam') or not values:
         raise ValueError('Выберите задания')
-    if day > date.today() + timedelta(days=1):
+    if day > datetime.now(ZoneInfo(student.timezone)).date():
         raise ValueError('Результат нельзя внести за будущую дату')
     existing = s.scalar(select(Activity).where(Activity.request_key == request_key))
     if existing:
@@ -58,10 +59,7 @@ def record_activity(s, actor_id, student_id, subject_id, day, kind, values, requ
         raise ValueError('Полная тестовая часть должна включать все её задания')
     if kind == 'exam':
         normalized = {t.id: normalized.get(t.id) for t in tasks}
-    activity = Activity(student_id=student_id, subject_id=subject_id, day=day, kind=kind,
-                        title=title[:120], request_key=request_key, scale_snapshot=dict(subject.scale) if kind == 'exam' else {})
-    s.add(activity)
-    s.flush()
+    prepared = []
     total = 0
     for task_id, value in normalized.items():
         task = task_map[task_id]
@@ -71,9 +69,15 @@ def record_activity(s, actor_id, student_id, subject_id, day, kind, values, requ
             raise ValueError('Балл вне диапазона')
         if kind != 'exam' and not attempted:
             raise ValueError('Для практики укажите балл')
+        prepared.append((task, score, attempted))
+        total += score
+    activity = Activity(student_id=student_id, subject_id=subject_id, day=day, kind=kind,
+                        title=title[:120], request_key=request_key, scale_snapshot=dict(subject.scale) if kind == 'exam' else {})
+    s.add(activity)
+    s.flush()
+    for task, score, attempted in prepared:
         s.add(Score(activity_id=activity.id, task_id=task.id, score=score,
                     maximum=task.max_score, attempted=attempted))
-        total += score
     if kind == 'exam':
         activity.secondary = subject.scale.get(str(total))
     daily = s.scalar(select(Daily).where(Daily.student_id == student_id, Daily.day == day))
@@ -121,7 +125,10 @@ def change_series(s, model, actor_id, student_id, item_id, scope, changes):
         if scope == 'future' and when < anchor:
             continue
         for key, value in changes.items():
-            setattr(row, key, value)
+            if key == 'day':
+                row.day = when + (value - anchor)
+            else:
+                setattr(row, key, value)
 
 
 def analytics(s, actor_id, student_id):
@@ -152,8 +159,15 @@ def analytics(s, actor_id, student_id):
     days = []
     if actor_id == student_id or user.share_wellbeing:
         days = [{'day': d.day.isoformat(), 'mood': d.mood, 'load': d.load} for d in s.scalars(
-            select(Daily).where(Daily.student_id == student_id).order_by(Daily.day))]
-    return {'exams': exams, 'tasks': stats, 'wellbeing': days}
+            select(Daily).where(Daily.student_id == student_id, (Daily.mood.is_not(None) | Daily.load.is_not(None))).order_by(Daily.day))]
+    history = [{'id': a.id, 'day': a.day.isoformat(), 'subject':subjects[a.subject_id],
+                'kind':a.kind, 'attempts':sum(r.attempted for r in scores if r.activity_id==a.id),
+                'score':sum(r.score for r in scores if r.activity_id==a.id)} for a in activities if a.kind != 'exam']
+    weeks = sorted({monday(a.day) for a in activities if a.kind != 'exam'} |
+                   {g.week for g in s.scalars(select(Goal).where(Goal.student_id == student_id))})
+    weekly = [{'day':w.isoformat(), 'attempts':sum(r.attempted for r in scores if by_id[r.activity_id].kind != 'exam' and monday(by_id[r.activity_id].day)==w),
+               'goals':progress(s,student_id,w)} for w in weeks]
+    return {'exams': exams, 'tasks': stats, 'wellbeing': days, 'history':history, 'weekly':weekly}
 
 
 def weekly_text(s, student_id, day):
@@ -162,8 +176,13 @@ def weekly_text(s, student_id, day):
     lines += [f"• {r['label']}: {r['done']} из {r['target']}" for r in rows]
     start = monday(day)
     reports = list(s.scalars(select(Daily).where(Daily.student_id == student_id, Daily.day >= start, Daily.day <= day)))
+    lines.append(f'Дней с занятиями: {sum(d.status == "study" for d in reports)}. Дней отдыха: {sum(d.status == "rest" for d in reports)}.')
     lines.append(f'Заполнено дней: {len(reports)} из {(day-start).days+1}.')
     exams = [a for a in analytics(s, student_id, student_id)['exams'] if start.isoformat() <= a['day'] <= day.isoformat()]
     lines += [f"Пробник · {a['subject']}: {a['primary']} первичных" + (f", {a['secondary']} вторичных" if a['secondary'] is not None else '') for a in exams]
+    moods=[d.mood for d in reports if d.mood is not None]
+    loads=[d.load for d in reports if d.load is not None]
+    if moods: lines.append(f'Самочувствие: {sum(moods)/len(moods):.1f} из 5 в среднем по ответам.')
+    if loads: lines.append(f'Нагрузка: {sum(loads)/len(loads):.1f} из 5 в среднем по ответам.')
     lines.append('План на следующую неделю можно посмотреть на сайте.')
     return '\n'.join(lines)

@@ -1,12 +1,12 @@
 import asyncio
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, UTC
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery
-from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
+from aiogram.exceptions import TelegramForbiddenError, TelegramAPIError
 from sqlalchemy import select
 from .config import Settings, setup_logging
 from .db import Database
@@ -25,10 +25,11 @@ def local_day(user, now=None):
     return (now or datetime.now(ZoneInfo(user.timezone))).astimezone(ZoneInfo(user.timezone)).date()
 
 
-def menu(user):
+def menu(user, day=None):
+    day = day or local_day(user)
     rest = {'female': 'Сегодня отдыхала', 'male': 'Сегодня отдыхал'}.get(user.gender, 'Сегодня день отдыха')
     return keyboard([[('Записать занятие', 'begin:practice'), ('Внести пробник', 'begin:exam')],
-                     [(rest, 'daily:rest'), ('Не получилось', 'daily:missed')],
+                     [(rest, f'daily:{day}:rest'), ('Не получилось', f'daily:{day}:missed')],
                      [('Цели недели', 'goals'), ('Итоги недели', 'weekly')], [('История и исправления', 'history')]])
 
 
@@ -38,7 +39,7 @@ def daily_keyboard(s, user, day):
         if slot.kind != 'rest' and slot.subject_id:
             rows.append([(slot.title[:55], f'slot:{slot.id}')])
     return InlineKeyboardMarkup(
-        inline_keyboard=keyboard(rows).inline_keyboard + menu(user).inline_keyboard)
+        inline_keyboard=keyboard(rows).inline_keyboard + menu(user,day).inline_keyboard)
 
 
 def get_user(s, telegram):
@@ -57,13 +58,22 @@ def draft_set(s, user_id, data):
         s.add(Draft(student_id=user_id, data=data))
 
 
-def mood_keyboard(kind):
+def mood_keyboard(kind, day):
     labels = ['Очень тяжело', 'Тяжело', 'Нормально', 'Хорошо', 'Очень хорошо'] if kind == 'mood' else ['Легко', 'Небольшая', 'Средняя', 'Высокая', 'Очень высокая']
-    return keyboard([[(f'{n} · {label}', f'feel:{kind}:{n}')] for n, label in enumerate(labels, 1)] + [[('Пропустить', f'feel:{kind}:skip')]])
+    return keyboard([[(f'{n} · {label}', f'feel:{day}:{kind}:{n}')] for n, label in enumerate(labels, 1)] + [[('Пропустить', f'feel:{day}:{kind}:skip')]])
 
 
 def router(db, settings):
     dp = Dispatcher()
+
+    async def ask_wellbeing(message,s,user,day):
+        if not user.wellbeing: return
+        daily = s.scalar(select(Daily).where(Daily.student_id == user.id, Daily.day == day))
+        if not daily:
+            daily=Daily(student_id=user.id,day=day);s.add(daily)
+        if daily.wellbeing_asked: return
+        daily.wellbeing_asked=True
+        await message.answer('Как самочувствие? Можно пропустить.',reply_markup=mood_keyboard('mood',day))
 
     async def send_menu(message, user, text='Что запишем сегодня?'):
         await message.answer(text, reply_markup=menu(user))
@@ -77,7 +87,7 @@ def router(db, settings):
             if arg.startswith('invite_'):
                 token = arg.removeprefix('invite_')
                 invite = s.get(Invite, token)
-                if not invite or invite.expires < datetime.utcnow() or invite.teacher_id == user.id:
+                if not invite or invite.expires < datetime.now(UTC).replace(tzinfo=None) or invite.teacher_id == user.id:
                     await message.answer('Приглашение недействительно. Попросите учителя создать новое.'); return
                 teacher = s.get(User, invite.teacher_id)
                 await message.answer(f'Учитель {teacher.name} сможет менять план и видеть учебные результаты. Подключить?',
@@ -139,7 +149,7 @@ def router(db, settings):
                     await send_menu(call.message, user); return
                 if command == 'accept':
                     invite = s.get(Invite, arg)
-                    if not invite or invite.expires < datetime.utcnow() or invite.teacher_id == user.id:
+                    if not invite or invite.expires < datetime.now(UTC).replace(tzinfo=None) or invite.teacher_id == user.id:
                         raise ValueError('Приглашение недействительно')
                     if user.teacher_id and user.teacher_id != invite.teacher_id:
                         raise ValueError('Сначала отключите текущего учителя в настройках')
@@ -188,6 +198,10 @@ def router(db, settings):
                         if not data['selected']: raise ValueError('Сначала добавьте задания на сайте')
                         data.update(index=0, values={})
                         await score_next(call.message, s, data)
+                    elif slot.task_ids:
+                        data.update(stage='select',selected=list(slot.task_ids),part='all')
+                        tasks=list(s.scalars(select(Task).where(Task.subject_id==slot.subject_id).order_by(Task.id)))
+                        await tasks_menu(call.message,tasks,data)
                     else:
                         await type_menu(call.message, data)
                     draft_set(s, user.id, data); return
@@ -196,26 +210,28 @@ def router(db, settings):
                         f"{r['label']}: {r['done']} из {r['target']}" for r in progress(s, user.id, local_day(user))) or 'Целей пока нет. Их можно добавить на сайте.'
                     await call.message.answer(text); return
                 if command == 'daily':
-                    if arg not in ('rest', 'missed'): return
-                    day = local_day(user)
+                    day_text, _, arg = arg.partition(':')
+                    day = date.fromisoformat(day_text)
+                    if day > local_day(user) or arg not in ('rest', 'missed'): return
                     daily = s.scalar(select(Daily).where(Daily.student_id == user.id, Daily.day == day))
                     if not daily:
                         daily = Daily(student_id=user.id, day=day)
                         s.add(daily)
                     daily.status = arg
                     await call.message.answer('День отдыха отмечен.' if arg == 'rest' else 'Отметка сохранена.')
-                    if user.wellbeing: await call.message.answer('Как самочувствие? Можно пропустить.', reply_markup=mood_keyboard('mood'))
+                    await ask_wellbeing(call.message,s,user,day)
                     return
                 if command == 'feel':
                     if not user.wellbeing: return
-                    kind, _, value = arg.partition(':')
+                    day_text, kind, value = arg.split(':',2)
+                    day = date.fromisoformat(day_text)
+                    if day > local_day(user): return
                     if kind not in ('mood', 'load'): return
                     if value != 'skip' and value not in ('1','2','3','4','5'): return
-                    day = local_day(user)
                     daily = s.scalar(select(Daily).where(Daily.student_id == user.id, Daily.day == day))
                     if not daily: daily = Daily(student_id=user.id, day=day); s.add(daily)
                     if value != 'skip': setattr(daily, kind, int(value))
-                    if kind == 'mood': await call.message.answer('Какой была нагрузка? Можно пропустить.', reply_markup=mood_keyboard('load'))
+                    if kind == 'mood': await call.message.answer('Какой была нагрузка? Можно пропустить.', reply_markup=mood_keyboard('load',day))
                     else: await call.message.answer('Сохранено.' if value != 'skip' else 'Опрос завершён.')
                     return
                 if not data:
@@ -303,7 +319,7 @@ def router(db, settings):
                         text += f' Вторичный: {activity.secondary}.' if activity.secondary is not None else ' Для этого результата нет строки в шкале перевода.'
                     await call.message.answer(text, reply_markup=menu(user))
                     if user.wellbeing and data['day'] == local_day(user).isoformat():
-                        await call.message.answer('Как самочувствие? Можно пропустить.', reply_markup=mood_keyboard('mood'))
+                        await ask_wellbeing(call.message,s,user,date.fromisoformat(data['day']))
                     return
                 else:
                     await call.message.answer('Эта кнопка относится к предыдущему шагу. Продолжите текущий ввод или /cancel.'); return
@@ -351,23 +367,31 @@ def due_messages(s, user, now):
                 yield f'{user.id}:slot:{slot.id}', f'Через несколько минут по плану: {slot.title}.', None
 
 
+async def deliver_due(bot, db, now):
+    # Exactly one bot process. Persist each successful delivery independently.
+    with db.session() as s:
+        users = list(s.scalars(select(User).where(User.bot_active.is_(True))))
+        pending = [(user, list(due_messages(s,user,now))) for user in users]
+    for user, messages in pending:
+        for key, text, markup in messages:
+            with db.session() as s:
+                if s.get(Delivery,key): continue
+            try:
+                await bot.send_message(user.telegram_id,text,reply_markup=markup)
+            except TelegramForbiddenError:
+                with db.session.begin() as s: s.get(User,user.id).bot_active=False
+                break
+            except (TelegramAPIError,OSError):
+                log.warning('Notification failed user=%s',user.id)
+                continue
+            # A crash after Telegram accepted a message but before this commit can repeat it.
+            with db.session.begin() as s: s.add(Delivery(key=key))
+
+
 async def scheduler(bot, db):
     while True:
         try:
-            with db.session.begin() as s:
-                users = list(s.scalars(select(User).where(User.bot_active.is_(True))))
-                now = datetime.now(ZoneInfo('UTC'))
-                for user in users:
-                    for key, text, markup in due_messages(s, user, now):
-                        if s.get(Delivery, key): continue
-                        # Send then persist: a process crash between these steps may repeat one message.
-                        try:
-                            await bot.send_message(user.telegram_id, text, reply_markup=markup)
-                        except TelegramForbiddenError:
-                            user.bot_active = False; break
-                        except (TelegramBadRequest, OSError):
-                            log.warning('Notification failed user=%s', user.id); continue
-                        s.add(Delivery(key=key)); s.flush()
+            await deliver_due(bot,db,datetime.now(ZoneInfo('UTC')))
         except Exception:
             log.exception('Scheduler cycle failed')
         await asyncio.sleep(30)

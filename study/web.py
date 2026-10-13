@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import secrets
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, UTC, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from uuid import uuid4
 from flask import Flask, request, session, g, redirect, url_for, render_template, abort, flash, jsonify
@@ -74,7 +74,7 @@ def create_app(settings=None):
     @app.context_processor
     def common():
         pupils = list(g.db.scalars(select(User).where(User.teacher_id == g.user.id))) if g.user else []
-        return {'csrf': session['csrf'], 'pupils': pupils, 'bot_username': settings.bot_username}
+        return {'csrf': session['csrf'], 'pupils': pupils, 'bot_username': settings.bot_username, 'base_url': settings.base_url.rstrip('/')}
 
     @app.get('/health')
     def health():
@@ -171,6 +171,11 @@ def create_app(settings=None):
         maximum = int(request.form['max_score'])
         if not 1 <= maximum <= 100:
             raise ValueError('Максимальный балл: от 1 до 100')
+        name = request.form.get('name', task.name).strip()[:80]
+        if not name: raise ValueError('Укажите название задания')
+        if g.db.scalar(select(Task).where(Task.subject_id==task.subject_id,Task.name==name,Task.id!=task.id)):
+            raise ValueError('Такое задание уже есть')
+        task.name = name
         task.max_score = maximum
         return back('settings')
 
@@ -239,12 +244,12 @@ def create_app(settings=None):
 
     @app.post('/slots/<int:item_id>')
     def slot_update(item_id):
-        owned(Slot, item_id)
+        slot = owned(Slot, item_id)
         start, end = request.form['start'], request.form['end']
         datetime.strptime(start, '%H:%M'); datetime.strptime(end, '%H:%M')
         if start >= end:
             raise ValueError('Окончание должно быть позже начала')
-        change_series(g.db, Slot, g.user.id, g.student.id, item_id, request.form['scope'], {'start': start, 'end': end})
+        change_series(g.db, Slot, g.user.id, g.student.id, item_id, request.form['scope'], {'start': start, 'end': end, 'day':date.fromisoformat(request.form.get('day',slot.day.isoformat())), 'title':request.form.get('title',slot.title).strip()[:120] or slot.title})
         return back()
 
     @app.post('/delete/<kind>/<int:item_id>')
@@ -285,7 +290,7 @@ def create_app(settings=None):
     @app.post('/invite')
     def invite_create():
         token = secrets.token_urlsafe(18)
-        g.db.add(Invite(token=token, teacher_id=g.user.id, expires=datetime.utcnow()+timedelta(days=7)))
+        g.db.add(Invite(token=token, teacher_id=g.user.id, expires=datetime.now(UTC).replace(tzinfo=None)+timedelta(days=7)))
         g.db.commit()
         return redirect(url_for('page', section='settings', invite=token))
 

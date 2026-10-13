@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, UTC
 from sqlalchemy import ForeignKey, UniqueConstraint, CheckConstraint, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -87,7 +87,8 @@ class Daily(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     student_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
     day: Mapped[date]
-    status: Mapped[str] = mapped_column(default='study')
+    status: Mapped[str] = mapped_column(default='unknown')
+    wellbeing_asked: Mapped[bool] = mapped_column(default=False)
     mood: Mapped[int | None]
     load: Mapped[int | None]
 
@@ -100,7 +101,7 @@ class Invite(Base):
 class Delivery(Base):
     __tablename__ = 'deliveries'
     key: Mapped[str] = mapped_column(primary_key=True)
-    sent_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    sent_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 class Draft(Base):
     __tablename__ = 'drafts'
