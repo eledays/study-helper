@@ -1,0 +1,18 @@
+services:
+  web:
+    build: .
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - study-data:/app/data
+    restart: unless-stopped
+  bot:
+    build: .
+    env_file: .env
+    command: python -m study.bot
+    volumes:
+      - study-data:/app/data
+    restart: unless-stopped
+volumes:
+  study-data:

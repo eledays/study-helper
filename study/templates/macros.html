@@ -1,0 +1,3 @@
+{% macro hidden() %}<input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="student" value="{{ g.student.id }}">{% endmacro %}
+{% macro subjects_select(subjects, required=true) %}<label>Предмет<select name="subject_id" {{ 'required' if required }}><option value="">Выберите предмет</option>{% for s in subjects %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></label>{% endmacro %}
+{% macro scope() %}<label>Применить изменение<select name="scope" required><option value="">Выберите область</option><option value="one">Только эта неделя</option><option value="future">Эта и следующие</option><option value="all">Весь период, включая прошлое</option></select></label>{% endmacro %}

@@ -1,0 +1,13 @@
+document.querySelectorAll('.add-row').forEach(button=>button.addEventListener('click',()=>{const body=button.closest('form').querySelector('tbody');const row=body.lastElementChild.cloneNode(true);row.querySelectorAll('input').forEach(i=>i.value='');body.append(row)}));
+document.querySelectorAll('[data-confirm]').forEach(form=>form.addEventListener('submit',event=>{if(!confirm(form.dataset.confirm))event.preventDefault()}));
+const dataNode=document.getElementById('analytics-data');
+function chart(container,rows,series,max){
+ const ns='http://www.w3.org/2000/svg', svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 700 230');svg.setAttribute('role','img');svg.setAttribute('aria-label','График результатов по датам');
+ function el(tag,attrs,text){const node=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>node.setAttribute(k,v));if(text!==undefined)node.textContent=text;svg.append(node);return node;}
+ for(let n=0;n<=4;n++){const y=190-n*40;el('line',{x1:40,x2:670,y1:y,y2:y,stroke:'#dce2d8'});el('text',{x:3,y:y+4,'font-size':11,fill:'#6b7971'},Math.round(max*n/4));}
+ const x=i=>rows.length===1?355:45+i*620/(rows.length-1), y=v=>190-v/max*160;
+ series.forEach(([key,label,color])=>{let segment=[];const flush=()=>{if(segment.length)el('polyline',{points:segment.join(' '),fill:'none',stroke:color,'stroke-width':2});segment=[];};rows.forEach((row,i)=>{const value=row[key];if(value===null||value===undefined){flush();return}segment.push(`${x(i)},${y(value)}`);const point=el('circle',{cx:x(i),cy:y(value),r:4,fill:color});const title=document.createElementNS(ns,'title');title.textContent=`${row.day}: ${label} ${value}`;point.append(title)});flush();});
+ rows.forEach((row,i)=>{if(i===0||i===rows.length-1||rows.length<8)el('text',{x:x(i),y:218,'text-anchor':'middle','font-size':10,fill:'#6b7971'},row.day.slice(5))});container.append(svg);
+ const legend=document.createElement('p');legend.className='chart-legend';legend.textContent=series.map(s=>s[1]).join(' · ');container.append(legend);
+}
+if(dataNode){const data=JSON.parse(dataNode.textContent);const root=document.getElementById('exam-charts');[...new Set(data.exams.map(e=>e.subject))].forEach(subject=>{const title=document.createElement('h3');title.textContent=subject;root.append(title);const rows=data.exams.filter(e=>e.subject===subject);chart(root,rows,[['primary','Первичные','#326653']],Math.max(1,...rows.map(r=>r.maximum)));chart(root,rows,[['secondary','Вторичные','#92703b']],100)});const wellbeing=document.getElementById('wellbeing-chart');if(wellbeing)chart(wellbeing,data.wellbeing,[['mood','Самочувствие','#326653'],['load','Нагрузка','#92703b']],5);}
