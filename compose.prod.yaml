@@ -1,0 +1,47 @@
+x-runtime: &runtime
+  image: study-helper:${RELEASE_TAG:-local}
+  environment:
+    ENVIRONMENT: production
+    DEBUG: "false"
+    COOKIE_SECURE: "true"
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  init: true
+  stop_grace_period: 40s
+  pids_limit: 128
+  mem_limit: 512m
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  web:
+    <<: *runtime
+  bot:
+    <<: *runtime
+    healthcheck:
+      test: [CMD, python, -m, study.manage, bot-health]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+  migrate:
+    <<: *runtime
+    profiles: [maintenance]
+    env_file: .env
+    command: python -m study.manage migrate
+    volumes:
+      - study-data:/app/data
+  backup:
+    <<: *runtime
+    profiles: [maintenance]
+    env_file: .env
+    command: python -m study.manage backup /backups/study.db
+    volumes:
+      - study-data:/app/data
+      - ${BACKUP_DIR:-./backups}:/backups
