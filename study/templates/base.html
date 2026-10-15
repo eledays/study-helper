@@ -1,1 +1,41 @@
-<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Рядом · подготовка</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"><script defer src="{{ url_for('static', filename='app.js') }}"></script></head><body><header><a class="brand" href="/">● Рядом<span>спокойный ритм подготовки</span></a>{% if g.user %}<nav>{% for key,label in [('plan','План'),('analytics','Аналитика'),('settings','Настройки')] %}<a class="{{ 'active' if section == key }}" href="{{ url_for('page',section=key,student=g.student.id) }}">{{ label }}</a>{% endfor %}</nav><form action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="quiet">Выйти</button></form>{% endif %}</header><main>{% if g.user %}<div class="person"><span>{{ g.student.name }}{% if g.student.id != g.user.id %} · ученик{% endif %}</span><select aria-label="Выбрать ученика" onchange="location.href='?student='+this.value"><option value="{{ g.user.id }}" {{ 'selected' if g.student.id == g.user.id }}>Мой план</option>{% for pupil in pupils %}<option value="{{ pupil.id }}" {{ 'selected' if g.student.id == pupil.id }}>{{ pupil.name }}</option>{% endfor %}</select></div>{% endif %}{% for category,message in get_flashed_messages(with_categories=true) %}<p class="notice {{ category }}" role="status">{{ message }}</p>{% endfor %}{% block content %}{% endblock %}</main><footer>Небольшие шаги, свой темп.</footer></body></html>
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script nonce="{{g.nonce}}">try{const t=localStorage.getItem("theme");document.documentElement.dataset.theme=t||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
+  <title>study-bot</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&amp;icon_names=add,check,chevron_left,chevron_right,close,edit&amp;display=block">
+  <link rel="stylesheet" href="{{url_for('static',filename='style.css')}}">
+  <script defer src="{{url_for('static',filename='app.js')}}"></script>
+</head>
+<body>
+<header>
+  {% if g.user %}
+  <nav aria-label="Разделы">
+    {% for key,label in [('goals','Цели'),('schedule','Расписание'),('analytics','Аналитика'),('editing','Редактирование'),('settings','Настройки')] %}
+    <a class="{{'active' if section == key}}" {% if section == key %}aria-current="page"{% endif %} href="{{url_for('page',section=key,student=g.student.id,week=week if week is defined else none)}}">{{label}}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+  <button type="button" class="quiet theme-toggle" id="theme-toggle" aria-label="Переключить тему">Тема</button>
+  {% if g.user %}
+  <div class="profile-cards" aria-label="Профиль">
+    <a class="profile-card profile-name" title="{{g.user.name}}" href="{{url_for('page',section='settings')}}">{% if avatar_url %}<img class="profile-avatar" src="{{avatar_url}}" alt="" width="28" height="28" referrerpolicy="no-referrer">{% endif %}<span>{{g.user.name}}</span></a>
+    {% if pupils or g.student.id != g.user.id %}
+    <div class="profile-card profile-student">
+      <select aria-label="Выбранный ученик" id="student-switch">
+        <option value="{{g.user.id}}" {{'selected' if g.student.id == g.user.id}}>Мой план</option>
+        {% for pupil in pupils %}<option value="{{pupil.id}}" {{'selected' if g.student.id == pupil.id}}>{{pupil.name}}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</header>
+<main class="{{'board-page' if section in ('goals','schedule')}}">
+  {% for category,message in get_flashed_messages(with_categories=true) %}<p class="notice {{category}}" role="status">{{message.rstrip('.')|display_label}}</p>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

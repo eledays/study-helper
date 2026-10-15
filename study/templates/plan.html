@@ -1,1 +1,67 @@
-{% extends 'base.html' %}{% from 'macros.html' import hidden,subjects_select,scope with context %}{% block content %}<div class="heading"><div><p class="eyebrow">План · ориентир, а не обязательство</p><h1>Неделя {{ week.strftime('%d.%m') }} — {{ (week+timedelta(days=6)).strftime('%d.%m') }}</h1></div><div class="arrows"><a href="?student={{g.student.id}}&week={{week-timedelta(days=7)}}">←</a><a href="?student={{g.student.id}}&week={{week+timedelta(days=7)}}">→</a></div></div><div class="columns"><section><h2>Цели недели</h2>{% for goal in goals %}<article class="card"><strong>{{ goal.label }}</strong><div class="numbers">{{ goal.done }} <span>из {{ goal.target }}</span></div><progress max="100" value="{{goal.percent}}"></progress><details><summary>Изменить цель</summary><form action="/goals/{{goal.id}}" method="post">{{ hidden() }}<label>Количество<input type="number" name="target" min="1" max="1000" value="{{goal.target}}" required></label>{{scope()}}<p class="muted">Изменение всего периода затронет прошлые планы, но сохранит результаты.</p><button>Сохранить</button></form><form action="/delete/goal/{{goal.id}}" method="post">{{hidden()}}<button class="quiet">Удалить эту цель</button></form></details></article>{% else %}<p class="empty">Пока нет целей. Добавьте небольшой объём работы на неделю.</p>{% endfor %}<details class="card"><summary>+ Добавить цель</summary><form action="/goals" method="post">{{hidden()}}{{subjects_select(subjects)}}<label>Что считаем<select name="kind"><option value="test">Полные тестовые части</option><option value="second">Любые задания второй части</option><option value="task">Конкретное задание</option></select></label><label>Задание (для конкретной цели)<select name="task_id"><option value="">Не выбрано</option>{% for t in tasks %}<option value="{{t.id}}">{% for s in subjects if s.id == t.subject_id %}{{s.name}} · {% endfor %}{{t.name}}</option>{% endfor %}</select></label><div class="row"><label>Количество<input name="target" type="number" min="1" max="1000" value="5" required></label><label>Число недель<input name="weeks" type="number" min="1" max="52" value="1" required></label></div><label>Начальная неделя<input type="date" name="week" value="{{week}}" required></label><button>Добавить</button></form></details></section><section><h2>Расписание</h2>{% for n in range(7) %}{% set day=week+timedelta(days=n) %}<div class="day"><h3>{{ ['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'][n] }} <span>{{day.strftime('%d.%m')}}</span></h3>{% for slot in slots if slot.day == day %}<article class="slot {{slot.kind}}"><div><strong>{{slot.start}}–{{slot.end}}</strong><span>{{slot.title}}</span><small>{{ {'study':'Занятие','rest':'Отдых','exam':'Пробник'}[slot.kind] }}</small></div><details><summary>Изменить</summary><form action="/slots/{{slot.id}}" method="post">{{hidden()}}<label>Название<input name="title" value="{{slot.title}}" maxlength="120" required></label><label>Дата<input name="day" type="date" value="{{slot.day}}" required></label><div class="row"><label>Начало<input type="time" name="start" value="{{slot.start}}" required></label><label>Конец<input type="time" name="end" value="{{slot.end}}" required></label></div>{{scope()}}<button>Сохранить</button></form><form action="/delete/slot/{{slot.id}}" method="post">{{hidden()}}<button class="quiet">Удалить этот слот</button></form></details></article>{% else %}<p class="muted">Свободный день</p>{% endfor %}</div>{% endfor %}<details class="card"><summary>+ Добавить слот или пробник</summary><form action="/slots" method="post">{{hidden()}}<label>Название<input name="title" maxlength="120" required placeholder="Например, разобрать задания"></label><label>Дата<input name="day" type="date" value="{{today}}" required></label><div class="row"><label>Начало<input name="start" type="time" value="16:00" required></label><label>Конец<input name="end" type="time" value="17:00" required></label></div><label>Тип<select name="kind"><option value="study">Занятие</option><option value="exam">Пробник</option><option value="rest">Отдых</option></select></label>{{subjects_select(subjects,false)}}<fieldset><legend>Задания (можно несколько)</legend>{% for t in tasks %}<label class="check"><input type="checkbox" name="task_ids" value="{{t.id}}">{% for s in subjects if s.id == t.subject_id %}{{s.name}} · {% endfor %}{{t.name}}</label>{% endfor %}</fieldset><label>Повторять недель<input name="weeks" type="number" value="1" min="1" max="52" required></label><button>Добавить</button></form></details></section></div>{% endblock %}
+{% extends 'base.html' %}
+{% from 'macros.html' import hidden,subjects_select,scope with context %}
+{% block content %}
+<section class="planning-board" aria-label="{{'Цели' if section == 'goals' else 'Расписание'}}">
+  <div class="board-toolbar">
+    <div class="week-switch" aria-label="Выбор недели">
+      <a aria-label="Предыдущая неделя" href="{{url_for('page',section=section,student=g.student.id,week=week-timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_left</span></a>
+      <time datetime="{{week}}">Неделя: {{week.strftime('%d.%m')}} - {{(week+timedelta(days=6)).strftime('%d.%m')}}</time>
+      <a aria-label="Следующая неделя" href="{{url_for('page',section=section,student=g.student.id,week=week+timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></a>
+    </div>
+
+  </div>
+  <div id="board-cards" data-editing="{{'true' if request.args.get('edit') == '1' else 'false'}}" class="card-board {{'goals-board' if section == 'goals' else 'schedule-board'}}">
+  {% if section == 'goals' %}
+    {% for goal in goals %}
+    <article class="board-card goal-card" style="--goal-fill:{{goal.percent}}%">
+      <strong title="{{goal.label|display_label}}">{{goal.label|display_label}}</strong>
+      <div class="numbers">{{goal.done}} <span>из {{goal.target}}</span></div>
+    </article>
+    {% else %}<p class="empty">Нет целей на эту неделю</p>{% endfor %}
+  {% else %}
+    {% for n in range(7) %}
+    {% set day=week+timedelta(days=n) %}
+    <article class="board-card day {{'today' if day == today}}">
+      <h3>{{['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'][n]}} <span>{{day.strftime('%d.%m')}}</span></h3>
+      {% for slot in slots if slot.day == day %}
+      <div class="slot {{slot.kind}}">
+        <strong>{{slot.start}}–{{slot.end}}</strong>
+        <span>{{slot.title|display_label}}</span>
+        <small>{{{'study':'Занятие','rest':'Отдых','exam':'Пробник'}[slot.kind]}}</small>
+      </div>
+      {% else %}<p class="muted">Свободный день</p>{% endfor %}
+    </article>
+    {% endfor %}
+  {% endif %}
+  </div>
+  <dialog id="board-create" class="create-dialog" aria-labelledby="create-title">
+    <div class="dialog-heading"><h2 id="create-title">{{'Новая цель' if section == 'goals' else 'Новый временной слот'}}</h2><button type="button" class="dialog-close quiet" aria-label="Закрыть" title="Закрыть"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+  {% if section == 'goals' %}
+    <form action="/goals" method="post" data-goal-selection>
+      {{hidden()}}{{subjects_select(subjects)}}
+      <label>Выбор заданий<select name="kind"><option value="group">Группа</option><option value="tasks">Конкретные номера</option></select></label>
+      <label data-group-field>Группа<select name="group_id" required><option value="">Выберите группу</option>{% for group in groups %}<option data-subject="{{group.subject_id}}" value="{{group.id}}">{{group.name}}</option>{% endfor %}</select></label>
+      <label data-group-field>Считать<select name="metric"><option value="tasks">Решения заданий из группы</option><option value="sets">Группу целиком</option></select></label>
+      <fieldset class="task-picker" data-goal-tasks hidden><legend>Номера заданий</legend>{% for t in tasks %}<label class="check" data-subject="{{t.subject_id}}"><input type="checkbox" name="task_ids" value="{{t.id}}">{{t.name}}</label>{% endfor %}</fieldset>
+      <div class="row"><label>Количество<input name="target" type="number" min="1" max="1000" value="5" required></label><label>Число недель<input name="weeks" type="number" min="1" max="52" value="1" required></label></div>
+      <label>Начальная неделя<input type="date" name="week" value="{{week}}" required></label><button>Добавить</button>
+    </form>
+  {% else %}
+    <form action="/slots" method="post">
+      {{hidden()}}
+      <label>Название<input name="title" maxlength="120" required></label>
+      <label>Дата<input name="day" type="date" value="{{today if week <= today < week+timedelta(days=7) else week}}" required></label>
+      <div class="row"><label>Начало<input name="start" type="time" value="16:00" required></label><label>Конец<input name="end" type="time" value="17:00" required></label></div>
+      <label>Тип<select name="kind"><option value="study">Занятие</option><option value="exam">Пробник</option><option value="rest">Отдых</option></select></label>
+      {{subjects_select(subjects,false)}}
+      <fieldset class="task-picker"><legend>Задания</legend>{% for t in tasks %}<label class="check" data-subject="{{t.subject_id}}"><input type="checkbox" name="task_ids" value="{{t.id}}">{{t.name}}</label>{% endfor %}</fieldset>
+      <label>Повторять недель<input name="weeks" type="number" value="1" min="1" max="52" required></label><button>Добавить</button>
+    </form>
+  {% endif %}
+  </dialog>
+    <div class="board-actions">
+      <a class="round-action quiet" id="board-edit" aria-label="Редактировать план" title="Редактировать план" href="{{url_for('page',section='editing',tab='plan',student=g.student.id,week=week)}}"><span class="material-symbols-outlined" aria-hidden="true">edit</span></a>
+      <button type="button" class="round-action" id="board-add" aria-label="{{'Добавить цель' if section == 'goals' else 'Добавить занятие'}}" title="{{'Добавить цель' if section == 'goals' else 'Добавить занятие'}}" aria-expanded="false" aria-controls="board-create" aria-haspopup="dialog"><span class="material-symbols-outlined" aria-hidden="true">add</span></button>
+    </div>
+</section>
+{% endblock %}

@@ -6,6 +6,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - study-data:/app/data
+      - ./study/bot_messages.toml:/app/study/bot_messages.toml:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 5s
@@ -21,6 +22,7 @@ services:
     command: python -m study.bot
     volumes:
       - study-data:/app/data
+      - ./study/bot_messages.toml:/app/study/bot_messages.toml:ro
     restart: unless-stopped
 volumes:
   study-data:

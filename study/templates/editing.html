@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import hidden,scope,subjects_select with context %}
+{% block content %}
+<div class="editing-layout">
+  <nav class="section-tabs" aria-label="Что редактировать">
+    {% for key,label in [('works','Работы'),('plan','Цели и расписание'),('subjects','Предметы и задания')] %}
+    <a class="{{'active' if tab == key}}" {% if tab == key %}aria-current="page"{% endif %} href="{{url_for('page',section='editing',tab=key,student=g.student.id,week=week)}}">{{label}}</a>
+    {% endfor %}
+  </nav>
+  {% if tab == 'works' %}
+  <section class="workspace-card">
+    <div class="card-heading"><h2>Занятия и пробники</h2><form method="get"><input type="hidden" name="tab" value="works"><input type="hidden" name="student" value="{{g.student.id}}"><label>Предмет записей<select name="record_subject"><option value="">Все предметы</option>{% for subject in subjects %}<option value="{{subject.id}}" {{'selected' if record_subject == subject.id|string}}>{{subject.name|display_label}}</option>{% endfor %}</select></label><button>Показать</button></form></div>
+    {% if g.user.id != g.student.id %}<p class="muted">Результаты редактирует сам ученик</p>{% endif %}
+    {% for record in records %}
+    <details class="record-editor" data-record-subject="{{record.subject_id}}">
+      <summary><time>{{record.day.strftime('%d.%m.%Y')}}</time><span>{% for subject in subjects if subject.id == record.subject_id %}{{subject.name|display_label}}{% endfor %}</span><span class="muted">{{'Пробник' if record.kind == 'exam' else 'Занятие'}}</span>{% if record.title %}<span class="record-title">{{record.title}}</span>{% endif %}</summary>
+      {% if g.user.id == g.student.id %}
+      <form action="/activity/{{record.id}}" method="post" class="record-form" {% if record.kind == 'exam' %}data-exam-edit{% endif %}>
+        {{hidden()}}
+        <div class="row"><label>Дата<input name="day" type="date" value="{{record.day}}" max="{{today}}" required></label><label>Название<input name="title" value="{{record.title}}" maxlength="120"></label></div>
+        {% if record.id in record_totals %}
+        <label>Первичный балл<input name="primary" type="number" min="0" max="{{record_totals[record.id].maximum}}" value="{{record_totals[record.id].primary_score}}" required></label>
+        {% else %}
+        <table class="score-editor"><thead><tr><th>Задание</th><th>Результат</th></tr></thead><tbody>
+          {% for score in record_scores.get(record.id, []) %}<tr><td>{% for task in tasks if task.id == score.task_id %}{{task.name}}{% endfor %}</td><td><select name="score_{{score.task_id}}" aria-label="Результат {% for task in tasks if task.id == score.task_id %}{{task.name}}{% endfor %}"><option value="" {{'selected' if not score.attempted}}>Не решалось</option>{% for n in range(score.maximum+1) %}<option value="{{n}}" {{'selected' if score.attempted and score.score == n}}>{{n}} / {{score.maximum}}</option>{% endfor %}</select></td></tr>{% endfor %}
+        </tbody></table>
+        {% endif %}
+        {% if record.kind == 'exam' %}
+        {% set primary = record_totals[record.id].primary_score if record.id in record_totals else record_scores.get(record.id, [])|sum(attribute='score') %}
+        {% set automatic = record.scale_snapshot and record.scale_snapshot.get(primary|string) == record.secondary %}
+        <label>Перевод баллов<select name="conversion"><option value="auto" {{'selected' if automatic}} {{'disabled' if not record.scale_snapshot}}>По сохранённой шкале</option><option value="manual" {{'selected' if not automatic}}>Внести балл вручную</option></select></label>
+        <label data-manual-secondary>Балл по шкале 0–100<input name="secondary" type="number" min="0" max="100" value="{{record.secondary if record.secondary is not none else ''}}"></label>
+        {% endif %}
+        <button>Сохранить</button>
+      </form>
+      <form action="/activity/{{record.id}}/delete" method="post" data-confirm="Удалить запись за {{record.day.strftime('%d.%m.%Y')}}?">{{hidden()}}<button class="quiet">Удалить запись</button></form>
+      {% else %}
+      <p>{{record.title}}</p>
+      {% endif %}
+    </details>
+    {% else %}<p class="empty">Здесь появятся записанные в боте занятия и пробники</p>{% endfor %}
+    <nav aria-label="Страницы истории"><span>Страница {{record_page}} из {{record_pages}} · записей {{record_count}}</span>
+    {% if record_page > 1 %}<a href="{{url_for('page',section='editing',tab='works',student=g.student.id,record_subject=record_subject,record_page=record_page-1)}}">← Назад</a>{% endif %}
+    {% if record_page < record_pages %}<a href="{{url_for('page',section='editing',tab='works',student=g.student.id,record_subject=record_subject,record_page=record_page+1)}}">Далее →</a>{% endif %}</nav>
+  </section>
+  {% elif tab == 'subjects' %}
+  <div class="subject-workspace">{% include 'subject_editor.html' %}</div>
+  {% else %}
+  <div class="editing-week week-switch">
+    <a aria-label="Предыдущая неделя" href="{{url_for('page',section='editing',tab='plan',student=g.student.id,week=week-timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_left</span></a>
+    <time>Неделя: {{week.strftime('%d.%m')}} - {{(week+timedelta(days=6)).strftime('%d.%m')}}</time>
+    <a aria-label="Следующая неделя" href="{{url_for('page',section='editing',tab='plan',student=g.student.id,week=week+timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></a>
+  </div>
+  <div class="editing-plan-grid">
+    <section class="workspace-card"><h2>Цели</h2>
+      {% for goal in goals %}<details class="record-editor"><summary>{{goal.label|display_label}}</summary>
+        <form action="/goals/{{goal.id}}" method="post">{{hidden()}}<label>Количество<input name="target" type="number" value="{{goal.target}}" min="1" max="1000" required></label>{{scope()}}<button>Сохранить</button></form>
+        <form action="/delete/goal/{{goal.id}}" method="post">{{hidden()}}<button class="quiet">Удалить цель</button></form>
+      </details>{% else %}<p class="empty">Нет целей на эту неделю</p>{% endfor %}
+    </section>
+    <section class="workspace-card"><h2>Расписание</h2>
+      {% for slot in slots %}<details class="record-editor"><summary>{{slot.day.strftime('%d.%m')}} · {{slot.start}} · {{slot.title|display_label}}</summary>
+        <form action="/slots/{{slot.id}}" method="post">{{hidden()}}<label>Название<input name="title" value="{{slot.title}}" maxlength="120" required></label><label>Дата<input type="date" name="day" value="{{slot.day}}" required></label><div class="row"><label>Начало<input name="start" type="time" value="{{slot.start}}" required></label><label>Конец<input name="end" type="time" value="{{slot.end}}" required></label></div>{{scope()}}<button>Сохранить</button></form>
+        <form action="/delete/slot/{{slot.id}}" method="post">{{hidden()}}<button class="quiet">Удалить занятие</button></form>
+      </details>{% else %}<p class="empty">Нет занятий на эту неделю</p>{% endfor %}
+    </section>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

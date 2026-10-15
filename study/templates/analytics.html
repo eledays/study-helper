@@ -1,1 +1,30 @@
-{% extends 'base.html' %}{% from 'macros.html' import hidden with context %}{% block content %}<p class="eyebrow">Замечать движение вперёд</p><h1>Аналитика</h1><section class="card"><h2>Ритм подготовки</h2><div id="weekly-chart"></div>{% for w in data.weekly %}<details><summary>Неделя {{w.day}} · {{w.attempts}} попыток</summary>{% for goal in w.goals %}<p>{{goal.label}}: {{goal.done}} из {{goal.target}}</p>{% else %}<p class="muted">Целей на эту неделю не было.</p>{% endfor %}</details>{% else %}<p class="empty">Здесь появится история недель.</p>{% endfor %}</section><section class="card"><h2>Пробники</h2><p class="muted">Первичные и вторичные баллы отдельно для каждого предмета.</p><div id="exam-charts"></div>{% for exam in data.exams %}<details><summary>{{exam.day}} · {{exam.subject}} · {{exam.primary}} / {{exam.maximum}}{% if exam.secondary is not none %} · {{exam.secondary}} вторичных{% endif %}</summary><table><thead><tr><th>Задание</th><th>Баллы</th><th>Попытка</th></tr></thead><tbody>{% for t in exam.tasks %}<tr><td>{{t.name}}</td><td>{{t.score}} / {{t.max}}</td><td>{{'Да' if t.attempted else 'Не решалось'}}</td></tr>{% endfor %}</tbody></table>{% if g.user.id == g.student.id %}<form method="post" action="/activity/{{exam.id}}/delete" data-confirm="Удалить пробник? Исправленный результат можно внести в боте.">{{hidden()}}<button class="quiet">Удалить для исправления</button></form>{% endif %}</details>{% else %}<p class="empty">После первого пробника здесь появится график.</p>{% endfor %}</section><section class="card"><h2>Задания</h2>{% for kind,label in [('practice','Обычные занятия'),('exam','Пробники')] %}<h3>{{label}}</h3><table><thead><tr><th>Задание</th><th>Попытки</th><th>Средний балл</th><th>От максимума</th></tr></thead><tbody>{% for t in data.tasks if t.kind == kind %}<tr><td>{{t.name}}</td><td>{{t.attempts}}</td><td>{{t.average}}</td><td><progress value="{{t.percent}}" max="100"></progress> {{t.percent}}%</td></tr>{% else %}<tr><td colspan="4">Пока нет результатов.</td></tr>{% endfor %}</tbody></table>{% endfor %}</section><section class="card"><h2>История занятий</h2>{% for a in data.history|reverse %}<div class="task-row"><span>{{a.day}} · {{a.subject}} · {{a.attempts}} заданий · {{a.score}} баллов</span>{% if g.user.id == g.student.id %}<form method="post" action="/activity/{{a.id}}/delete" data-confirm="Удалить запись?">{{hidden()}}<button class="quiet">Удалить</button></form>{% endif %}</div>{% else %}<p class="empty">Пока нет занятий.</p>{% endfor %}<p class="muted">Исправить баллы можно через историю в боте.</p></section>{% if data.wellbeing %}<section class="card"><h2>Самочувствие и нагрузка</h2><div id="wellbeing-chart"></div><p class="muted">Ответы по шкале от 1 до 5, без интерпретации.</p></section>{% endif %}<script type="application/json" id="analytics-data">{{data|tojson}}</script>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+<div class="analytics-layout" data-today="{{today}}">
+  <div class="analytics-toolbar"><label for="analytics-period">Период</label><select id="analytics-period"><option value="28" {{'selected' if period == 28}}>4 недели</option><option value="56" {{'selected' if period == 56}}>8 недель</option><option value="84" {{'selected' if period == 84}}>12 недель</option><option value="365" {{'selected' if period == 365}}>Год</option></select></div>
+  <div class="analytics-top">
+    <section class="analytics-card" aria-labelledby="rhythm-title">
+      <div class="card-heading"><h2 id="rhythm-title">Ритм подготовки</h2><select id="rhythm-subject" aria-label="Предмет для ритма подготовки"><option value="all">Все предметы</option>{% for subject in subjects %}<option value="{{subject.id}}">{{subject.name|display_label}}</option>{% endfor %}</select></div>
+      <div id="rhythm-metrics" class="metric-grid" aria-live="polite"></div>
+      <div id="rhythm-calendar" class="rhythm-calendar"></div>
+      <div class="calendar-caption"><span id="rhythm-range"></span><span class="calendar-key"><i></i> День с занятием</span></div>
+    </section>
+    <section class="analytics-card" aria-labelledby="exams-title">
+      <div class="card-heading"><h2 id="exams-title">Пробники</h2><select id="exam-subject" aria-label="Предмет пробников">{% for subject in subjects %}<option value="{{subject.id}}">{{subject.name|display_label}}</option>{% endfor %}</select></div>
+      <div id="exam-metrics" class="metric-grid" aria-live="polite"></div>
+      <div id="exam-chart" class="analytics-chart"></div>
+      <div id="exam-pending" class="chart-note" hidden><span></span>{% if g.user.id == g.student.id %}<a href="{{url_for('page',section='editing',tab='works',student=g.student.id)}}">Внести баллы →</a>{% endif %}</div>
+    </section>
+  </div>
+  <section class="analytics-card task-analytics" aria-labelledby="tasks-title">
+    <div class="card-heading"><h2 id="tasks-title">Задания</h2><div class="card-filters"><select id="task-subject" aria-label="Предмет заданий">{% for subject in subjects %}<option value="{{subject.id}}">{{subject.name|display_label}}</option>{% endfor %}</select><select id="task-kind" aria-label="Тип работ для заданий"><option value="all">Все работы</option><option value="practice">Занятия</option><option value="exam">Пробники</option></select></div></div>
+    <label class="mobile-task-select">Задание<select id="task-number"></select></label>
+    <div id="task-picker" class="analytics-task-picker" role="group" aria-label="Выбор задания"></div>
+    <div class="task-detail-heading"><h3 id="selected-task"></h3><span id="task-last" class="muted"></span></div>
+    <div id="task-metrics" class="metric-grid" aria-live="polite"></div>
+    <div class="task-detail-grid"><div id="task-chart" class="analytics-chart"></div><div class="task-breakdown"><h3>Результаты решений</h3><div id="task-breakdown"></div></div></div>
+  </section>
+  {% if data.wellbeing %}<section class="analytics-card"><h2>Самочувствие и нагрузка</h2><div id="wellbeing-chart"></div></section>{% endif %}
+</div>
+<script type="application/json" id="analytics-data">{{data|tojson}}</script>
+{% endblock %}

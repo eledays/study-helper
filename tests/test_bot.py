@@ -1,6 +1,6 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from study.bot import due_messages, menu
+from study.bot import due_messages
 from study.models import User, Slot, Delivery
 
 def test_daily_weekly_and_reminder_timezone(db):
@@ -17,15 +17,11 @@ def test_daily_weekly_and_reminder_timezone(db):
         user.reminders=False
         assert len(list(due_messages(s,user,datetime(2026,10,18,18,0,tzinfo=ZoneInfo('UTC')))))==2
 
-def test_gender():
-    user=User(gender='female',timezone='Europe/Moscow')
-    assert 'Сегодня отдыхала' in [b.text for row in menu(user).inline_keyboard for b in row]
-
 # Exercise real aiogram routing without a Telegram token or network calls.
 import asyncio
 from aiogram import Bot
 from aiogram.client.session.base import BaseSession
-from aiogram.methods import SendMessage, EditMessageReplyMarkup
+from aiogram.methods import SendMessage, EditMessageReplyMarkup, EditMessageText
 from aiogram.types import Update, Message, Chat, User as TelegramUser, CallbackQuery
 from sqlalchemy import select
 from study.bot import router
@@ -39,9 +35,9 @@ class FakeSession(BaseSession):
     async def stream_content(self, *args, **kwargs):
         yield b''
     async def make_request(self, bot, method, timeout=None):
-        if isinstance(method, (SendMessage, EditMessageReplyMarkup)):
+        if isinstance(method, (SendMessage, EditMessageReplyMarkup, EditMessageText)):
             self.messages.append(method)
-            return Message(message_id=len(self.messages), date=datetime.now(), chat=Chat(id=100,type='private'), text=getattr(method,'text',None))
+            return Message(message_id=getattr(method, 'message_id', None) or len(self.messages), date=datetime.now(), chat=Chat(id=100,type='private'), text=getattr(method,'text',None))
         return True
 
 def test_bot_full_exam_duplicate_and_correction(db):
@@ -64,7 +60,11 @@ def test_bot_full_exam_duplicate_and_correction(db):
         await press(f'points:{key}:1:2'); await press(f'points:{key}:2:skip')
         # Restart dispatcher to verify the draft survives process restart.
         dp=router(db,Settings())
-        await press(f'save:{key}'); await press(f'save:{key}')
+        with db.session() as session:
+            assert session.get(Draft,1) is None
+            assert len(list(session.scalars(select(Activity)))) == 1
+        await press(f'points:{key}:2:skip')  # Repeated final answer must not create another record
+        await press(f'save:{key}')  # Old confirmation buttons are harmless
         with db.session.begin() as s:
             activities=list(s.scalars(select(Activity)))
             assert len(activities)==1
@@ -73,14 +73,10 @@ def test_bot_full_exam_duplicate_and_correction(db):
             s.get(Subject,1).scale={'2':99}
             s.get(Task,2).max_score=1
         await press(f'revise:{activity_id}')
-        with db.session() as s: key=s.get(Draft,1).data['key'][:8]
-        await press(f'points:{key}:0:0'); await press(f'points:{key}:1:2'); await press(f'points:{key}:2:skip')
-        await press(f'save:{key}')
         with db.session() as s:
-            scores=list(s.scalars(select(Score).order_by(Score.task_id)))
-            assert [sc.score for sc in scores]==[0,2,0]
-            assert scores[1].maximum==2
-            assert s.get(Activity,activity_id).secondary is None # Old scale has no primary=2.
+            assert s.get(Draft,1) is None
+            assert [sc.score for sc in s.scalars(select(Score).order_by(Score.task_id))] == [1,2,0]
+        assert '/editing' in transport.messages[-1].text
     asyncio.run(run())
 
 def test_delivery_persists_across_restart(db):
@@ -112,4 +108,377 @@ def test_optional_wellbeing_asked_once_and_dated(db):
             daily=s.scalar(select(Daily))
             assert daily.day.isoformat()=='2026-10-12'
             assert daily.mood==3
+    asyncio.run(run())
+
+class BotHarness:
+    def __init__(self, db):
+        self.db=db
+        self.transport=FakeSession()
+        self.bot=Bot('123456:ABCDEF_fake_token',session=self.transport)
+        self.dp=router(db,Settings())
+        self.tg=TelegramUser(id=100,is_bot=False,first_name='Саша')
+        self.message=Message(message_id=1,date=datetime.now(),chat=Chat(id=100,type='private'),text='menu')
+        self.counter=0
+    async def press(self, data):
+        with self.db.session() as s:
+            row = s.get(Draft, 1)
+            if row and row.data.get('message_id'):
+                self.message = self.message.model_copy(update={'message_id': row.data['message_id']})
+        self.counter+=1
+        await self.dp.feed_update(self.bot,Update(update_id=self.counter,callback_query=CallbackQuery(
+            id=str(self.counter),from_user=self.tg,chat_instance='x',message=self.message,data=data)))
+    async def text(self, text):
+        self.counter+=1
+        message=Message(message_id=self.counter,date=datetime.now(),chat=Chat(id=100,type='private'),from_user=self.tg,text=text)
+        await self.dp.feed_update(self.bot,Update(update_id=self.counter,message=message))
+    def draft(self):
+        with self.db.session() as s:return dict(s.get(Draft,1).data)
+    async def next_exceptions(self):
+        data=self.draft()
+        await self.press(f"exceptions-next:{data['key'][:8]}:{data['stage']}")
+
+
+def test_test_part_defaults_and_missing_attempts(db):
+    from study.models import Goal
+    from study.services import progress
+    async def run():
+        h=BotHarness(db)
+        await h.press('begin:practice');await h.press('sub:1');await h.press('type:test')
+        assert h.draft()['values']=={'1':1,'2':2}
+        key=h.draft()['key'][:8]
+        await h.next_exceptions()
+        # Duplicate Continue from the first screen cannot skip the error screen
+        await h.press(f'exceptions-next:{key}:group-skipped')
+        assert h.draft()['stage']=='group-errors'
+        await h.next_exceptions()
+        with db.session() as session: assert session.get(Draft,1) is None
+        await h.press('begin:practice');await h.press('sub:1');await h.press('type:test')
+        key=h.draft()['key'][:8]
+        await h.press(f'missing:{key}:2');await h.next_exceptions()
+        await h.press(f'mistake:{key}:1');await h.next_exceptions()
+        with db.session.begin() as s:
+            activities=list(s.scalars(select(Activity).order_by(Activity.id)))
+            rows=list(s.scalars(select(Score).where(Score.activity_id==activities[1].id).order_by(Score.task_id)))
+            assert [(sc.score,sc.attempted) for sc in rows]==[(0,True),(0,False)]
+            s.add(Goal(student_id=1,subject_id=1,kind='test',week=activities[0].day-timedelta(days=activities[0].day.weekday()),target=2,series='x'))
+            s.flush()
+            assert progress(s,1,activities[0].day)[0]['done']==1
+    from datetime import timedelta
+    asyncio.run(run())
+
+
+def test_group_errors_only_ask_for_partial_credit(db):
+    async def run():
+        h=BotHarness(db)
+        await h.press('begin:practice');await h.press('sub:1');await h.press('type:test')
+        key=h.draft()['key'][:8]
+        await h.next_exceptions();await h.press(f'mistake:{key}:2');await h.next_exceptions()
+        assert h.draft()['selected']==[2]
+        await h.press(f'points:{key}:0:1')
+        with db.session() as s:
+            assert [sc.score for sc in s.scalars(select(Score).order_by(Score.task_id))]==[1,1]
+    asyncio.run(run())
+
+
+def test_exam_selection_bulk_and_total(db):
+    from study.models import ExamTotal
+    from study.services import analytics
+    async def run():
+        h=BotHarness(db)
+        await h.press('begin:exam');await h.press('sub:1')
+        key=h.draft()['key'][:8]
+        await h.press(f'exam-select:{key}')
+        await h.press(f'missing:{key}:3')
+        await h.next_exceptions()
+        await h.press(f'mistake:{key}:2')
+        await h.next_exceptions()
+        assert h.draft()['selected']==[2]  # One-point task does not need a score question
+        await h.press(f'points:{key}:0:2')
+        await h.press('begin:exam');await h.press('sub:1')
+        key=h.draft()['key'][:8]
+        await h.press(f'exam-bulk:{key}');await h.text('1 9 -')
+        assert h.draft()['stage']=='exam-bulk'
+        await h.text('0 1 -')
+        await h.press('begin:exam');await h.press('sub:1')
+        key=h.draft()['key'][:8]
+        await h.press(f'exam-total:{key}');await h.text('8')
+        assert h.draft()['stage']=='exam-total'
+        await h.text('3')
+        with db.session.begin() as s:
+            report=analytics(s,1,1)['exams']
+            assert [r['primary'] for r in report]==[3,1,3]
+            assert report[2]['maximum']==7 and report[2]['tasks']==[]
+            assert not any(button.text == 'Сохранить' for message in h.transport.messages
+                           if getattr(message, 'reply_markup', None)
+                           for row in message.reply_markup.inline_keyboard for button in row)
+            activity_id=report[2]['id']
+            s.get(Task,3).max_score=1
+            s.get(Subject,1).scale={'2':99}
+        await h.press(f'revise:{activity_id}');await h.text('2')
+        with db.session() as session: assert session.get(Draft,1) is None
+        with db.session() as s:
+            assert s.get(ExamTotal,activity_id).maximum==7
+            assert s.get(ExamTotal,activity_id).primary_score==3
+            assert s.get(Activity,activity_id).secondary == 60
+    asyncio.run(run())
+
+def test_custom_group_can_mix_standard_parts(db):
+    from study.groups import save_group
+    async def run():
+        with db.session.begin() as s:
+            group=save_group(s,1,'Повторение',[1,3]);s.flush();group_id=group.id
+        h=BotHarness(db)
+        await h.press('begin:practice');await h.press('sub:1')
+        key=h.draft()['key'][:8]
+        await h.press(f'group:{key}:{group_id}')
+        assert h.draft()['values']=={'1':1,'3':4}
+        await h.next_exceptions();await h.next_exceptions()
+        with db.session() as s:
+            activity=s.scalar(select(Activity))
+            assert activity.kind=='practice' and activity.title=='Повторение'
+            assert {sc.task_id for sc in s.scalars(select(Score))}=={1,3}
+    asyncio.run(run())
+
+
+def test_welcome_has_no_buttons_and_working_command_help(db):
+    async def run():
+        h = BotHarness(db)
+        await h.text('/start')
+        sent = [message for message in h.transport.messages if isinstance(message, SendMessage)]
+        assert len(sent) == 1
+        assert sent[0].text.startswith('Привет 👋\nПомогу записывать занятия и следить за подготовкой\n\n')
+        assert '/help' in sent[0].text and '{base_url}' not in sent[0].text
+        assert sent[0].reply_markup is None
+        await h.text('/help')
+        help_message = h.transport.messages[-1]
+        assert '/cancel' in help_message.text and 'http' in help_message.text
+        assert help_message.reply_markup is None
+        assert all(command not in help_message.text for command in ('/missed', '/history', '/site', '/menu'))
+        assert 'Результаты сохраняются' not in help_message.text
+        assert 'Внутри записи' not in help_message.text
+        for command in ('/practice', '/exam', '/goals', '/weekly', '/rest'):
+            assert command in help_message.text
+        await h.text('/practice')
+        assert h.draft()['stage'] == 'subject'
+    asyncio.run(run())
+
+
+def test_commands_route_without_consuming_score_input(db):
+    async def run():
+        h = BotHarness(db)
+        await h.text('/exam')
+        assert h.draft()['kind'] == 'exam'
+        await h.press('sub:1')
+        key = h.draft()['key'][:8]
+        await h.press(f'exam-total:{key}')
+        await h.text('/help')
+        assert h.draft()['stage'] == 'exam-total'
+        await h.text('3')
+        with db.session() as s:
+            assert s.get(Draft, 1) is None
+            assert len(list(s.scalars(select(Activity)))) == 1
+        await h.text('/goals')
+        await h.text('/weekly')
+        from study.messages import bot_text
+        assert bot_text('weekly.heading') in h.transport.messages[-1].text
+        await h.text('/rest')
+        with db.session() as s:
+            assert s.scalar(select(Daily)).status == 'study'  # A recorded activity keeps this a study day
+        await h.text('/practice')
+        await h.text('/cancel')
+        with db.session() as s:
+            assert s.get(Draft, 1) is None
+    asyncio.run(run())
+
+
+def test_practice_edits_one_message_selection_and_five_custom_moods(db):
+    async def run():
+        h = BotHarness(db)
+        await h.text('/practice')
+        message_id = h.draft()['message_id']
+        await h.press('sub:1')
+        await h.press('type:test')
+        key = h.draft()['key'][:8]
+        first = h.transport.messages[-1]
+        assert isinstance(first, EditMessageText) and first.message_id == message_id
+        buttons = [b for row in first.reply_markup.inline_keyboard for b in row]
+        assert [b.text for b in buttons[:2]] == ['✓ №1', '✓ №2']
+        assert any(b.text == 'Снять выделение' for b in buttons)
+        await h.press(f'selection:{key}:group-skipped:none')
+        assert h.draft()['skipped'] == [1, 2]
+        assert any(b.text == 'Выделить все' for row in h.transport.messages[-1].reply_markup.inline_keyboard for b in row)
+        await h.next_exceptions()
+        assert h.draft()['stage'] == 'group-skipped'  # An empty selection stays editable
+        await h.press(f'selection:{key}:group-skipped:all')
+        await h.press(f'selection:{key}:group-skipped:all')  # Duplicate is idempotent
+        assert h.draft()['skipped'] == []
+        await h.next_exceptions()
+        assert h.draft()['errors'] == []
+        await h.press(f'selection:{key}:group-skipped:none')  # Stale previous-step control
+        assert h.draft()['skipped'] == []
+        await h.press(f'selection:{key}:group-errors:all')
+        assert h.draft()['errors'] == [1, 2]
+        await h.press(f'selection:{key}:group-errors:none')
+        await h.press(f'mistake:{key}:2')
+        await h.next_exceptions()
+        assert h.draft()['selected'] == [2]  # Only a multi-point error needs clarification
+        await h.press(f'points:{key}:0:1')
+        final = h.transport.messages[-1]
+        assert isinstance(final, EditMessageText) and final.message_id == message_id
+        assert final.text == 'Результат сохранен, отличная работа 💚\nКак ты себя чувствуешь?'
+        assert [b.icon_custom_emoji_id for b in final.reply_markup.inline_keyboard[0]] == [
+            '5346250607160209995', '5346036820868083187', '5348525299149584089',
+            '5348309872179949637', '5348423147647414077']
+        assert len([m for m in h.transport.messages if isinstance(m, SendMessage)]) == 1
+        with db.session() as s:
+            assert s.get(Draft, 1) is None
+            assert [(r.score, r.attempted) for r in s.scalars(select(Score).order_by(Score.task_id))] == [(1, True), (1, True)]
+        before_duplicate = len(h.transport.messages)
+        await h.press(f'points:{key}:0:1')
+        assert len(h.transport.messages) == before_duplicate
+        mood_callback = final.reply_markup.inline_keyboard[0][2].callback_data
+        await h.press(mood_callback)
+        assert isinstance(h.transport.messages[-1], EditMessageText)
+        assert h.transport.messages[-1].reply_markup is None
+        with db.session() as s:
+            assert s.scalar(select(Daily)).mood == 3
+        assert len([m for m in h.transport.messages if isinstance(m, SendMessage)]) == 1
+    asyncio.run(run())
+
+
+def test_individual_tasks_use_same_defaults_and_resume_after_restart(db):
+    async def run():
+        h = BotHarness(db)
+        await h.text('/practice')
+        await h.press('sub:1')
+        await h.press('type:practice')
+        assert h.draft()['all_ids'] == [1, 2, 3]
+        assert h.draft()['skipped'] == []
+        key = h.draft()['key'][:8]
+        await h.press(f'missing:{key}:1')
+        h.dp = router(db, Settings())
+        await h.next_exceptions()
+        await h.next_exceptions()
+        with db.session() as s:
+            assert [(r.task_id, r.score) for r in s.scalars(select(Score).order_by(Score.task_id))] == [(2, 2), (3, 4)]
+        assert len([m for m in h.transport.messages if isinstance(m, SendMessage)]) == 1
+    asyncio.run(run())
+
+
+def test_old_workflow_message_cannot_change_new_draft(db):
+    async def run():
+        h = BotHarness(db)
+        await h.text('/practice')
+        old = h.draft()
+        await h.text('/practice')
+        current = h.draft()
+        old_message = h.message.model_copy(update={'message_id': old['message_id']})
+        await h.dp.feed_update(h.bot, Update(update_id=1000, callback_query=CallbackQuery(
+            id='stale', from_user=h.tg, chat_instance='x', message=old_message, data='sub:1')))
+        assert h.draft()['key'] == current['key'] and h.draft()['stage'] == 'subject'
+        await h.press('sub:1')
+        assert h.draft()['stage'] == 'type'
+    asyncio.run(run())
+
+
+def test_practice_respects_disabled_wellbeing(db):
+    async def run():
+        with db.session.begin() as s:
+            s.get(User, 1).wellbeing = False
+        h = BotHarness(db)
+        await h.text('/practice'); await h.press('sub:1'); await h.press('type:test')
+        await h.next_exceptions(); await h.next_exceptions()
+        final = h.transport.messages[-1]
+        assert final.text == 'Результат сохранен, отличная работа 💚'
+        assert final.reply_markup is None
+    asyncio.run(run())
+
+
+def test_custom_mood_confirmation_uses_utf16_offsets():
+    from study.bot import mood_confirmation, mood_keyboard
+    text, entities = mood_confirmation(3)
+    entity, = entities
+    encoded = text.encode('utf-16-le')
+    assert encoded[entity.offset * 2:(entity.offset + entity.length) * 2].decode('utf-16-le') == '😐'
+    assert entity.custom_emoji_id == '5348525299149584089'
+    buttons = mood_keyboard('mood', '2026-10-15').inline_keyboard[0]
+    assert [b.callback_data for b in buttons] == [f'feel:2026-10-15:mood:{n}' for n in range(1, 6)]
+    assert all(b.icon_custom_emoji_id for b in buttons)
+
+
+def test_mood_buttons_allow_plain_emoji_fallback(monkeypatch):
+    import study.bot as bot_module
+    original = bot_module.bot_texts
+    monkeypatch.setattr(bot_module, 'bot_texts', lambda key: [''] * 5 if key == 'wellbeing.practice_mood_ids' else original(key))
+    buttons = bot_module.mood_buttons('test')
+    assert [b.text for b in buttons] == ['😵', '😞', '😐', '📱', '🤩']
+    assert all(b.icon_custom_emoji_id is None for b in buttons)
+    assert bot_module.mood_confirmation(1)[1] is None
+
+
+def test_goals_have_percent_bars_and_escape_titles(db, monkeypatch):
+    import study.bot as bot_module
+    monkeypatch.setattr(bot_module, 'progress', lambda *args: [
+        {'label': 'Алгебра <b>& задачи', 'percent': 0, 'done': 0, 'target': 5},
+        {'label': 'Геометрия', 'percent': 15, 'done': 3, 'target': 20},
+        {'label': 'Физика', 'percent': 100, 'done': 2, 'target': 2},
+        {'label': 'Сверх плана', 'percent': 150, 'done': 3, 'target': 2},
+    ])
+    async def run():
+        h = BotHarness(db)
+        await h.text('/goals')
+        sent = h.transport.messages[-1]
+        assert sent.parse_mode == 'HTML'
+        assert sent.text == ('<b>Цели недели</b>\n\nАлгебра &lt;b&gt;&amp; задачи 0%\n' + '⬜️' * 10
+            + '\n\nГеометрия 15%\n' + '🟩' * 2 + '⬜️' * 8
+            + '\n\nФизика 100%\n' + '🟩' * 10
+            + '\n\nСверх плана 100%\n' + '🟩' * 10)
+        await h.press('goals')
+        assert h.transport.messages[-1].text == sent.text
+    asyncio.run(run())
+
+
+def test_rest_suppresses_only_todays_evening_preserving_work(db, monkeypatch):
+    import study.bot as bot_module
+    from study.services import record_activity
+    from datetime import date
+    today = date(2026, 10, 11)  # Sunday: weekly report must still arrive
+    monkeypatch.setattr(bot_module, 'local_day', lambda user: today)
+    async def run():
+        with db.session.begin() as s:
+            record_activity(s, 1, 1, 1, today, 'practice', {1: 1}, 'rest-check')
+        h = BotHarness(db)
+        await h.text('/rest')
+        await h.text('/rest')
+        with db.session() as s:
+            assert len(list(s.scalars(select(Activity)))) == 1
+            assert len(list(s.scalars(select(Score)))) == 1
+            assert s.scalar(select(Daily)).status == 'study'
+            user = s.get(User, 1)
+            due = list(due_messages(s, user, datetime(2026, 10, 11, 18, tzinfo=ZoneInfo('UTC'))))
+            assert not any(':daily:' in key for key, _, _ in due)
+            assert any(':weekly:' in key for key, _, _ in due)
+            tomorrow = list(due_messages(s, user, datetime(2026, 10, 12, 18, tzinfo=ZoneInfo('UTC'))))
+            assert any(':daily:' in key for key, _, _ in tomorrow)
+        await h.press('delete:1')
+        with db.session() as s:
+            assert len(list(s.scalars(select(Activity)))) == 1
+        assert '/editing' in h.transport.messages[-1].text
+    asyncio.run(run())
+
+
+def test_no_button_menu_after_cancel_unknown_text_or_evening(db):
+    async def run():
+        h = BotHarness(db)
+        await h.text('/practice')
+        await h.text('/cancel')
+        with db.session() as s:
+            assert s.get(Draft, 1) is None
+        assert h.transport.messages[-1].reply_markup is None
+        await h.text('Привет')
+        assert h.transport.messages[-1].reply_markup is None
+        assert '/help' in h.transport.messages[-1].text
+        with db.session() as s:
+            messages = list(due_messages(s, s.get(User, 1), datetime(2026, 10, 18, 18, tzinfo=ZoneInfo('UTC'))))
+            assert all(markup is None for _, _, markup in messages)
     asyncio.run(run())

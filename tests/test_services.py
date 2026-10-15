@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 import pytest
 from sqlalchemy import select
-from study.models import Goal, Task, Subject, Score, Activity, Daily
+from study.models import User, Goal, Task, Subject, Score, Activity, Daily
 from study.services import record_activity, progress, monday, analytics, change_series, parse_scale
 
 DAY = date(2026, 10, 12)
@@ -36,6 +36,8 @@ def test_access_privacy_and_no_teacher_edit(db):
     with db.session.begin() as s:
         s.add(Daily(student_id=1, day=DAY, mood=2, load=4))
         record(s)
+        assert len(analytics(s, 2, 1)['wellbeing']) == 1
+        s.get(User, 1).share_wellbeing = False
         assert analytics(s, 2, 1)['wellbeing'] == []
         assert len(analytics(s, 1, 1)['wellbeing']) == 1
         with pytest.raises(PermissionError): analytics(s, 3, 1)
@@ -69,3 +71,55 @@ def test_series_scope(db):
 @pytest.mark.parametrize('rows', [[('0','50'),('1','40')], [('1','10'),('1','20')], [('1','101')]])
 def test_scale_validation(rows):
     with pytest.raises(ValueError): parse_scale(rows)
+
+
+def test_weekly_counts_unmarked_days_as_rest(db):
+    from study.services import weekly_text
+    from study.messages import bot_text
+    with db.session.begin() as s:
+        # Two records on Monday are one study day; Tuesday has only a mood entry
+        record(s, key='first')
+        record(s, key='second')
+        s.add(Daily(student_id=1, day=DAY + timedelta(days=1), mood=3))
+        text = weekly_text(s, 1, DAY + timedelta(days=2))
+        assert bot_text('weekly.study_days', study_days=1, rest_days=2) in text
+
+
+def test_weekly_report_has_goal_cards_and_secondary_exam_scores(db):
+    from study.services import weekly_text
+    from study.messages import bot_text
+    with db.session.begin() as s:
+        s.add(Goal(student_id=1, subject_id=1, kind='task', task_id=1, week=DAY, target=2, series='weekly-goal'))
+        record(s, 'practice', {1: 1}, 'weekly-practice')
+        record(s, 'exam', {1: 1, 2: 2}, 'weekly-exam')
+        s.get(Subject, 1).name = 'Математика <&>'
+        text = weekly_text(s, 1, DAY + timedelta(days=3))
+        assert text.startswith(bot_text('weekly.heading') + '\n\n' + bot_text('weekly.goals') + '\n')
+        assert bot_text('weekly.goals') in text
+        assert '🟩🟩🟩⬜️⬜️ 50% - Математика &lt;&amp;&gt;. №1' in text
+        assert bot_text('weekly.statistics') + '\nДней с занятиями: 1\nДней отдыха: 3' in text
+        assert bot_text('weekly.exams') in text
+        assert 'Математика &lt;&amp;&gt;' in text and '(понедельник): 60' in text
+        assert 'первичных' not in text and 'Самочувствие' not in text
+        assert 'Выполнено:' not in text
+
+
+def test_weekly_support_varies_by_week_and_matches_activity(db, monkeypatch):
+    from study.services import weekly_text
+    import study.services as services
+    original = services.bot_texts
+    def variants(key):
+        if key.startswith('weekly.encouragement_'):
+            return [key + ': первый', key + ': второй']
+        return original(key)
+    monkeypatch.setattr(services, 'bot_texts', variants)
+    bot_texts = variants
+    with db.session.begin() as s:
+        empty = weekly_text(s, 1, DAY)
+        rest_variants = bot_texts('weekly.encouragement_rest')
+        active_variants = bot_texts('weekly.encouragement_active')
+        assert empty.split('\n\n')[-1] in rest_variants
+        assert weekly_text(s, 1, DAY) == empty
+        assert weekly_text(s, 1, DAY + timedelta(days=7)).split('\n\n')[-1] != empty.split('\n\n')[-1]
+        record(s, key='support')
+        assert weekly_text(s, 1, DAY).split('\n\n')[-1] in active_variants

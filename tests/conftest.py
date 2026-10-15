@@ -1,6 +1,8 @@
 import pytest
 from study.db import Database
 from study.models import User, Subject, Task
+from study.config import Settings
+from study.web import create_app
 
 @pytest.fixture
 def db(tmp_path):
@@ -16,3 +18,13 @@ def db(tmp_path):
                    Task(id=2, subject_id=1, name='№2', part='test', max_score=2),
                    Task(id=3, subject_id=1, name='№19', part='second', max_score=4)])
     return database
+
+@pytest.fixture
+def client(db):
+    app = create_app(Settings(secret_key='test-secret-that-is-long-enough', database_url=str(db.engine.url)))
+    app.config['TESTING'] = True
+    client = app.test_client()
+    with client.session_transaction() as session:
+        session['user_id'] = 1
+        session['csrf'] = 'test-csrf'
+    return client
