@@ -169,3 +169,14 @@ class BotMessage(Base):
 class UserSetup(Base):
     __tablename__ = 'user_setup'
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+
+
+class AccessPolicy(Base):
+    __tablename__ = 'access_policy'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    whitelist_enabled: Mapped[bool] = mapped_column(default=False, server_default='0')
+
+
+class AllowedTelegramUser(Base):
+    __tablename__ = 'allowed_telegram_users'
+    telegram_id: Mapped[int] = mapped_column(primary_key=True)

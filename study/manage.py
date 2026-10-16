@@ -12,7 +12,7 @@ from sqlalchemy.engine import make_url
 
 from .config import Settings
 from .db import Database
-from .models import BotOutbox, BotMessage, Draft, Invite, Delivery, User
+from .models import BotOutbox, BotMessage, Draft, Invite, Delivery, User, AccessPolicy, AllowedTelegramUser
 
 
 def sqlite_path(url):
@@ -92,7 +92,16 @@ def main():
     command = sub.add_parser('set-teacher', help='Выдать или отозвать роль учителя по Telegram ID')
     command.add_argument('telegram_id', type=int)
     command.add_argument('--revoke', action='store_true')
+    command = sub.add_parser('whitelist', help='Управление белым списком Telegram ID')
+    actions = command.add_subparsers(dest='action', required=True)
+    for action in ('enable', 'disable', 'status', 'list'):
+        actions.add_parser(action)
+    for action in ('add', 'remove'):
+        action_parser = actions.add_parser(action)
+        action_parser.add_argument('telegram_id', type=int, nargs='+')
     args = parser.parse_args()
+    if args.command == 'whitelist' and args.action in ('add', 'remove') and any(value <= 0 for value in args.telegram_id):
+        parser.error('Telegram ID должен быть положительным числом')
     settings = Settings()
     if args.command == 'backup':
         backup(settings.database_url, args.path)
@@ -102,7 +111,27 @@ def main():
         Database(settings.database_url).engine.dispose()
     else:
         db = Database(settings.database_url, initialize=False)
-        if args.command == 'set-teacher':
+        if args.command == 'whitelist':
+            with db.session.begin() as s:
+                policy = s.get(AccessPolicy, 1)
+                if args.action in ('enable', 'disable'):
+                    if policy is None:
+                        policy = AccessPolicy(id=1)
+                        s.add(policy)
+                    policy.whitelist_enabled = args.action == 'enable'
+                elif args.action == 'status':
+                    print('Белый список: ' + ('включён' if policy and policy.whitelist_enabled else 'выключен'))
+                elif args.action == 'list':
+                    for telegram_id in s.scalars(select(AllowedTelegramUser.telegram_id).order_by(AllowedTelegramUser.telegram_id)):
+                        print(telegram_id)
+                else:
+                    for telegram_id in set(args.telegram_id):
+                        row = s.get(AllowedTelegramUser, telegram_id)
+                        if args.action == 'add' and row is None:
+                            s.add(AllowedTelegramUser(telegram_id=telegram_id))
+                        elif args.action == 'remove' and row is not None:
+                            s.delete(row)
+        elif args.command == 'set-teacher':
             with db.session.begin() as s:
                 user = s.scalar(select(User).where(User.telegram_id == args.telegram_id))
                 if user is None:

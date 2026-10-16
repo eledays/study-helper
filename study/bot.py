@@ -19,6 +19,7 @@ from .groups import ensure_groups, group_tasks
 from .catalog import ensure_defaults
 from .config import Settings, setup_logging
 from .db import Database
+from .access import access_allowed
 from .responses import TransactionalResponses, response_session, drain_outbox
 from .telegram_text import split_text
 from .models import User, Subject, Task, Draft, Daily, Invite, Slot, Delivery, Activity, Score, TaskGroup, ExamTotal
@@ -604,11 +605,11 @@ async def deliver_due(bot, db, now):
     # Exactly one bot process. Persist each successful delivery independently.
     with db.session() as s:
         users = list(s.scalars(select(User).where(User.bot_active.is_(True))))
-        pending = [(user, list(due_messages(s,user,now))) for user in users]
+        pending = [(user, list(due_messages(s,user,now))) for user in users if access_allowed(s, user.telegram_id)]
     for user, messages in pending:
         for key, text, markup in messages:
             with db.session() as s:
-                if s.get(Delivery,key): continue
+                if not access_allowed(s, user.telegram_id) or s.get(Delivery,key): continue
             try:
                 for index, chunk in enumerate(split_text(text, html=':weekly:' in key)):
                     part_key = f'{key}:part:{index}'

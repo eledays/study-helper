@@ -22,7 +22,7 @@ class Database:
                     version = conn.execute(text('SELECT version FROM schema_version WHERE id=1')).scalar_one()
             except SQLAlchemyError:
                 raise RuntimeError('База недоступна или схема не инициализирована. Проверьте доступ и выполните python -m study.manage migrate') from None
-            if version != 2:
+            if version != 3:
                 raise RuntimeError('Неподдерживаемая версия схемы. Выполните python -m study.manage migrate')
             return
         # Add the explicit teacher role to existing databases. Migration is additive.
@@ -30,7 +30,7 @@ class Database:
         if inspector.has_table('schema_version'):
             with self.engine.connect() as conn:
                 version = conn.execute(text('SELECT version FROM schema_version WHERE id=1')).scalar_one_or_none()
-                if version not in (None, 1, 2):
+                if version not in (None, 1, 2, 3):
                     raise RuntimeError('База создана другой версией приложения; откат схемы запрещён')
         if inspector.has_table('users') and 'is_teacher' not in {c['name'] for c in inspector.get_columns('users')}:
             with self.engine.begin() as conn:
@@ -63,5 +63,5 @@ class Database:
         with self.engine.begin() as conn:
             conn.execute(text('CREATE TABLE IF NOT EXISTS schema_version (id INTEGER PRIMARY KEY CHECK (id=1), version INTEGER NOT NULL)'))
             if conn.execute(text('SELECT version FROM schema_version WHERE id=1')).scalar_one_or_none() is None:
-                conn.execute(text('INSERT INTO schema_version (id, version) VALUES (1, 2)'))
-            conn.execute(text('UPDATE schema_version SET version=2 WHERE id=1'))
+                conn.execute(text('INSERT INTO schema_version (id, version) VALUES (1, 3)'))
+            conn.execute(text('UPDATE schema_version SET version=3 WHERE id=1'))

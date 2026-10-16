@@ -176,3 +176,42 @@ python -m study.manage set-teacher 123456789 --revoke
 
 Учителю доступны приглашения учеников в настройках. Обычные пользователи не
 могут создавать приглашения или получать доступ к планам учеников.
+
+### Белый список
+
+По умолчанию доступ открыт. Белый список хранится в общей БД web и bot;
+изменения CLI применяются без перезапуска. Используйте числовые Telegram ID,
+пользователя можно добавить до его регистрации.
+
+```sh
+# Сначала добавьте разрешённых пользователей, затем включите ограничение:
+docker compose exec web python -m study.manage whitelist add 123456789 987654321
+docker compose exec web python -m study.manage whitelist enable
+
+docker compose exec web python -m study.manage whitelist status
+docker compose exec web python -m study.manage whitelist list
+docker compose exec web python -m study.manage whitelist remove 987654321
+docker compose exec web python -m study.manage whitelist disable
+```
+
+Для запуска вне Docker используйте `python -m study.manage whitelist ...`.
+При использовании production override добавьте к `docker compose`
+`-f compose.yaml -f compose.prod.yaml`.
+
+При включённом режиме пользователи вне списка не могут зарегистрироваться,
+войти или продолжить работу в существующей сессии сайта. Бот игнорирует их
+сообщения и кнопки, не присылает напоминания; накопленные ответы для них удаляются
+из очереди при обработке. Отключение режима сохраняет список.
+
+После обновления требуется миграция схемы до версии 3. Остановите сервисы,
+сделайте резервную копию БД и выполните миграцию перед запуском новой версии:
+
+```sh
+docker compose stop web bot
+docker compose run --rm --no-deps web python -m study.manage backup /app/data/before-whitelist.db
+docker compose run --rm --no-deps web python -m study.manage migrate
+docker compose up -d
+```
+
+Имя файла резервной копии должно быть новым. Для production используйте те же
+Compose-файлы и тег образа, что и при запуске сервисов.

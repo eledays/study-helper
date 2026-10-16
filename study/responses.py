@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from .models import BotOutbox, BotMessage, Draft, User
 from .telegram_text import split_text
+from .access import access_allowed
 
 log = logging.getLogger(__name__)
 _session = ContextVar('bot_response_session')
@@ -91,6 +92,8 @@ class TransactionalResponses(BaseMiddleware):
         else:
             proxy = DeferredMessage(event)
         with self.db.session() as s:
+            if not event.from_user or not access_allowed(s, event.from_user.id):
+                return None
             token = _session.set(s)
             try:
                 result = await handler(proxy, data)
@@ -132,6 +135,12 @@ async def _drain_outbox(bot, db, chat_id=None, now=None):
         if row.retry_at > now:
             blocked.add(row.chat_id)
             continue
+        with db.session.begin() as s:
+            if not access_allowed(s, row.chat_id):
+                pending = s.get(BotOutbox, row.id)
+                if pending:
+                    s.delete(pending)
+                continue
         payload = dict(row.payload)
         reference = payload.get('message_id')
         if reference is not None and reference < 0:

@@ -15,6 +15,7 @@ from .groups import ensure_groups, group_tasks, save_group, attach_standard
 from .catalog import CATALOG, add_subject, ensure_defaults
 from .config import Settings, setup_logging
 from .db import Database
+from .access import access_allowed
 from .models import User, Subject, Task, Goal, Slot, Activity, Score, Invite, TaskGroup, GroupTask, UserAvatar, GoalSelection, ExamTotal
 from .services import accessible, subject_for, parse_scale, monday, progress, analytics, change_series, edit_activity
 from .account import own_queries, delete_account, remove_catalog_item
@@ -58,6 +59,9 @@ def create_app(settings=None):
         if request.endpoint in ('health', 'live'):
             return
         g.user = g.db.get(User, session.get('user_id')) if session.get('user_id') else None
+        if g.user and request.endpoint not in ('static', 'logout') and not access_allowed(g.db, g.user.telegram_id):
+            session.clear()
+            abort(403, 'Доступ разрешён только пользователям из белого списка')
         session.setdefault('csrf', secrets.token_urlsafe(24))
         if request.endpoint == 'debug_login' and not settings.debug:
             abort(404)
@@ -151,6 +155,8 @@ def create_app(settings=None):
     @app.post('/auth/debug')
     def debug_login():
         user = g.db.scalar(select(User).order_by(User.id).limit(1))
+        if user is not None and not access_allowed(g.db, user.telegram_id):
+            abort(403, 'Доступ разрешён только пользователям из белого списка')
         if user is None:
             flash('Пока нет пользователей для входа', 'error')
             return redirect(url_for('login'))
@@ -169,6 +175,8 @@ def create_app(settings=None):
             telegram_id = int(data['id'])
         except (KeyError, ValueError):
             abort(400)
+        if not access_allowed(g.db, telegram_id):
+            abort(403, 'Доступ разрешён только пользователям из белого списка')
         user = g.db.scalar(select(User).where(User.telegram_id == telegram_id))
         if not user:
             user = User(telegram_id=telegram_id, name=data.get('first_name', ''))
