@@ -6,6 +6,7 @@ from datetime import datetime, date, timedelta, UTC
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 from aiogram import Bot, Dispatcher
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, CallbackQuery, BotCommand, MessageEntity
 from aiogram.exceptions import TelegramForbiddenError, TelegramAPIError, TelegramBadRequest
@@ -639,7 +640,7 @@ async def main():
     except BlockingIOError:
         raise RuntimeError('Для этой базы уже запущен экземпляр бота') from None
     db = Database(settings.database_url, initialize=settings.environment != 'production')
-    bot = Bot(settings.bot_token)
+    bot = Bot(settings.bot_token, session=AiohttpSession(proxy=settings.bot_proxy_url or None))
     async def polling_heartbeat(make_request, bot, method):
         response = await make_request(bot, method)
         if isinstance(method, GetUpdates):

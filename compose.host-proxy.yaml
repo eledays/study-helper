@@ -1,0 +1,5 @@
+# Linux: let only the bot reach a proxy bound to the host's loopback interface.
+# Use together with compose.yaml and compose.prod.yaml.
+services:
+  bot:
+    network_mode: host
