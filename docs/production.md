@@ -1,66 +1,118 @@
-# Безопасное развёртывание
+# Развёртывание и обслуживание
 
-Поддерживаемая схема: один Linux-сервер, Docker Engine с Compose v2, локальный Docker volume для SQLite, один процесс бота и один web-контейнер за HTTPS reverse proxy. Не размещайте SQLite на NFS и не масштабируйте bot. Блокировка `.bot.lock` запрещает второй экземпляр на той же базе. Для нескольких серверов потребуется отдельная архитектура базы и доставки.
+## 1. Требования и схема
 
-## Первое развёртывание
+Инструкция рассчитана на Linux-сервер с Docker Engine, Compose v2 и `sudo`. Команды выполняются из обычного SSH-сеанса администратора, без `sudo -s` и постоянной root-консоли. Пути и адреса ниже — примеры; `/opt/study-helper` можно заменить другим постоянным каталогом, сохраняя его при обновлениях.
 
-1. Создайте отдельного администратора сервера с SSH-ключом. Откройте наружу только SSH, 80 и 443. Доступ к Docker socket приравнивается к административному; приложению socket не передаётся. Разместите репозиторий, например, в `/srv/study-helper`, ограничив доступ к нему.
-2. Установите Docker/Compose и Caddy средствами вашей ОС. Настройте DNS домена на сервер. Выпустите бота через BotFather и настройте `/setdomain` на домен сайта.
-
-   Если проект размещается в `/opt/study-helper` под отдельным системным пользователем, задайте владельца и права после клонирования:
-
-   ```bash
-   sudo chown -R study-helper:study-helper /opt/study-helper
-   sudo chmod -R u=rwX,g=rX,o= /opt/study-helper
-   sudo chmod 644 /opt/study-helper/study/bot_messages.toml
-   ```
-
-   Файл `bot_messages.toml` подключается в контейнер напрямую и должен читаться пользователем контейнера с UID 10001. Dockerfile отдельно нормализует права исходников внутри образа, поэтому закрытые права репозитория на хосте не мешают импорту Python. Пользователю хоста `study-helper` не нужны группы `sudo` или `docker`; команды Docker выполняет администратор через `sudo`. В остальных командах этой инструкции замените `/srv/study-helper` на `/opt/study-helper`, если используете этот путь.
-3. Подготовьте production `.env`:
-
-   ```bash
-   cd /srv/study-helper
-   umask 077
-   cp .env.production.example .env
-   chmod 600 .env
-   python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
-   ```
-
-   Впишите сгенерированный SECRET_KEY, BOT_TOKEN, BOT_USERNAME без `@` и реальный HTTPS BASE_URL без пути. Не копируйте вывод ключа в чат, Git или shell-команду. ENVIRONMENT должен быть `production`, DEBUG — `false`, COOKIE_SECURE — `true`. Не используйте пример ключа. `.env` не попадает в образ и Git. Для секретов резервной копии `.env` используйте отдельное зашифрованное хранилище; без SECRET_KEY сессии будут сброшены, без BOT_TOKEN вход и бот не работают.
-4. Создайте каталог резервных копий. Контейнер работает с UID 10001:
-
-   ```bash
-   sudo install -d -m 700 -o 10001 -g 10001 /srv/study-helper/backups
-   export COMPOSE_FILE=compose.yaml:compose.prod.yaml
-   docker compose config --quiet
-   docker compose build --pull web bot
-   bash deploy/smoke.sh
-   docker compose run --rm --no-deps migrate
-   docker compose run --rm --no-deps migrate python -m study.manage check
-   docker compose up -d --wait web bot
-   ```
-
-   Обычный `compose.yaml` предназначен для разработки. На production всегда подключайте `compose.prod.yaml`. Он принудительно включает production-проверки, отключает debug и включает Secure cookies. Старое значение HTTP BASE_URL приводит к отказу старта, а не к небезопасной работе. `docker compose config` без `--quiet` раскрывает значения переменных: не публикуйте его вывод.
-5. Скопируйте [Caddyfile](../deploy/Caddyfile) в конфигурацию Caddy, замените `study.example.com` своим доменом, выполните `caddy validate --config /etc/caddy/Caddyfile`, затем штатно перезагрузите Caddy. Синтаксис лимита тела описан в [документации Caddy](https://caddyserver.com/docs/caddyfile/directives/request_body). Пример рассчитан на Caddy на хосте; `127.0.0.1:8000` внутри другого контейнера будет другим адресом. Порт приложения остаётся только на loopback. Caddy получает и обновляет TLS-сертификат. Не включайте логирование полных URL `/auth/telegram`: query содержит подписанные данные входа и персональные сведения.
-6. Откройте бота, отправьте `/start`, затем войдите на сайт через Telegram. Проверьте чек-лист ниже. Не создавайте тестовые результаты в аккаунтах реальных пользователей.
-
-Контейнеры используют read-only rootfs, временный `/tmp`, сброшенные capabilities, no-new-privileges, ограничение памяти/PID и ротацию логов. Постоянная запись разрешена в volume базы. В production нет автоматического изменения схемы при запуске web/bot: миграция — отдельная операция. Номер текущей схемы — 1. Миграция принимает прежнюю совместимую схему, добавляет таблицы очереди и индексы, сохраняет существующие ID/результаты и отказывается работать с неизвестными версиями или отсутствующими столбцами. Такие старые несовместимые базы требуют отдельной миграции, их нельзя «чинить» удалением volume.
-
-Если volume уже использовался старым образом с другим UID, сначала остановите web и bot и исправьте владельца **только каталога данных приложения**:
+Установите Docker Engine и Compose plugin по [инструкции для своей ОС](https://docs.docker.com/engine/install/). На сервере с другими проектами не удаляйте существующие Docker-пакеты, не меняйте глобальную конфигурацию Docker, SSH или firewall без учёта этих проектов. Проверьте:
 
 ```bash
-docker compose stop web bot
-docker compose run --rm --no-deps --user 0 --cap-add CHOWN --cap-add FOWNER --cap-add DAC_OVERRIDE migrate \
-  sh -c 'chown -R 10001:10001 /app/data && chmod 700 /app/data'
+sudo docker version
+sudo docker compose version
+sudo systemctl is-active docker
 ```
 
-Затем сделайте backup новым образом до миграции. Это отдельная операция перехода со старого UID; обычные сервисы всегда запускаются без root. Не заменяйте в команде `/app/data` корнем хоста. Если RELEASE_TAG отличается от `local`, передавайте точный образ в smoke: `bash deploy/smoke.sh study-helper:ВАШ_ТЕГ`.
+Приложению нужны один web-контейнер, один bot-контейнер и локальный Docker volume для SQLite. HTTPS завершает reverse proxy на этом сервере или на другой машине. Не размещайте SQLite на NFS и не запускайте несколько экземпляров бота на одной базе. Блокировка `.bot.lock` защищает от второго процесса на том же каталоге данных. Бот использует исходящий long polling; отдельный входящий порт для Telegram не нужен.
 
-## Адрес и порт сайта
+## 2. Пользователи и права
 
-Production-пример `.env` задаёт `COMPOSE_FILE=compose.yaml:compose.prod.yaml`, поэтому из каталога проекта достаточно `sudo docker compose up -d --build --wait web bot` (при первом запуске предварительно выполните миграцию). Для SOCKS5 на хосте добавьте `:compose.host-proxy.yaml` к `COMPOSE_FILE`.
+Администратор владеет репозиторием, редактирует `.env` и получает обновления без `sudo`. Docker обслуживается отдельными командами через `sudo`. Не добавляйте пользователя приложения в группы `sudo` или `docker`: доступ к системному Docker даёт административные возможности.
 
-Для reverse proxy на этом же сервере оставьте `WEB_BIND_ADDRESS=127.0.0.1`. Для reverse proxy на соседней машине задайте LAN-адрес **сервера приложения** и свободный порт:
+Процессы внутри контейнеров уже работают под пользователем `app`, UID 10001. Поэтому отдельный системный пользователь хоста для этой Docker-схемы не требуется. Если он нужен по правилам сервера, его можно создать без входа, но не использовать для запуска Docker:
+
+```bash
+sudo useradd --system --user-group --create-home \
+  --home-dir /var/lib/study-helper --shell /usr/sbin/nologin study-helper
+```
+
+Это необязательный шаг; домашняя директория такого пользователя не обязана совпадать с каталогом кода. UID пользователя хоста не должен совпадать с UID контейнера.
+
+Подготовьте каталог, принадлежащий текущему администратору:
+
+```bash
+sudo install -d -m 750 -o "$(id -un)" -g "$(id -gn)" /opt/study-helper
+git clone REPO_URL /opt/study-helper
+cd /opt/study-helper
+chmod -R u=rwX,g=rX,o= .
+chmod 644 study/bot_messages.toml
+```
+
+Замените `REPO_URL` адресом репозитория. Для приватного репозитория используйте read-only deploy key либо штатную авторизацию Git; не сохраняйте токен в URL.
+
+`bot_messages.toml` подключается напрямую с хоста и должен читаться UID 10001. Другие исходники копируются в образ, где Dockerfile устанавливает права чтения. Не выдавайте всему репозиторию права `777`.
+
+Создайте каталог копий с владельцем контейнера:
+
+```bash
+sudo install -d -m 700 -o 10001 -g 10001 /opt/study-helper/backups
+```
+
+Не применяйте последующий рекурсивный `chown` репозитория к этому каталогу: он должен оставаться доступным UID 10001. Новому Docker volume владельца задаёт образ; каталог базы на хосте вручную создавать не нужно.
+
+## 3. Production-настройки
+
+Все дальнейшие команды выполняются из `/opt/study-helper`.
+
+```bash
+umask 077
+cp .env.production.example .env
+chmod 600 .env
+python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
+nano .env
+```
+
+Заполните файл, вставив сгенерированный ключ и реальные данные:
+
+```dotenv
+COMPOSE_FILE=compose.yaml:compose.prod.yaml
+ENVIRONMENT=production
+DEBUG=false
+COOKIE_SECURE=true
+BASE_URL=https://study.example.com
+WEB_BIND_ADDRESS=127.0.0.1
+WEB_PORT=8000
+BOT_TOKEN=REPLACE_WITH_BOT_TOKEN
+BOT_USERNAME=REPLACE_WITH_BOT_USERNAME
+BOT_PROXY_URL=
+SECRET_KEY=REPLACE_WITH_GENERATED_SECRET
+DATABASE_URL=sqlite:////app/data/study.db
+RELEASE_TAG=local
+BACKUP_DIR=./backups
+```
+
+`BASE_URL` — публичный HTTPS-адрес без пути. `BOT_USERNAME` указывается без `@`. Создайте бота через [BotFather](https://t.me/BotFather), получите токен и выполните `/setdomain`, указав домен сайта.
+
+`DATABASE_URL` указывает на путь **в контейнере**: `/app/data/study.db`. Каталог репозитория на хосте сюда подставлять нельзя. Контейнер имеет read-only корневую файловую систему; постоянные данные записываются только в подключённый volume.
+
+`.env` принадлежит администратору с правами 600, исключён из Git и Docker build context. Сохраните его отдельно в зашифрованном хранилище. Не меняйте `SECRET_KEY` при обычном обновлении. `docker compose config` без `--quiet` раскрывает секреты — не публикуйте его вывод.
+
+`COMPOSE_FILE` читается Compose из `.env`, поэтому длинные параметры `-f` в командах не нужны. Если в текущем shell ранее экспортирован `COMPOSE_FILE`, удалите переопределение командой `unset COMPOSE_FILE`.
+
+## 4. Адрес, порт и reverse proxy
+
+Внутри контейнера web всегда слушает порт 8000. `WEB_PORT` меняет опубликованный порт хоста; `WEB_BIND_ADDRESS` выбирает интерфейс хоста.
+
+### Reverse proxy на том же сервере
+
+Оставьте:
+
+```dotenv
+WEB_BIND_ADDRESS=127.0.0.1
+WEB_PORT=8000
+```
+
+Направьте HTTPS reverse proxy на `http://127.0.0.1:8000`. Пример Caddy находится в [deploy/Caddyfile](../deploy/Caddyfile). Установите Caddy по [официальной инструкции](https://caddyserver.com/docs/install), замените домен, затем проверьте и примените конфигурацию:
+
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+На сервере с существующими сайтами добавьте отдельный блок сайта, сохранив остальные блоки. Публичные DNS-записи должны вести на reverse proxy; для автоматического выпуска сертификата Caddy обеспечьте доступность TCP 80 и 443.
+
+### Reverse proxy на другой машине
+
+Пример `.env` для сервера приложения с LAN-адресом `192.168.1.10`:
 
 ```dotenv
 WEB_BIND_ADDRESS=192.168.1.10
@@ -68,26 +120,97 @@ WEB_PORT=18000
 BASE_URL=https://study.example.com
 ```
 
-Прокси должен направлять запросы на `http://192.168.1.10:18000`, передавая исходный Host и X-Forwarded-Proto. HTTPS завершается на прокси; `BASE_URL` остаётся публичным HTTPS-адресом. Внутренний порт контейнера и healthcheck остаются 8000. Разрешите доступ к опубликованному порту только с IP прокси средствами сетевого firewall или цепочки DOCKER-USER; публикация Docker может обходить правила UFW. После изменения `.env` выполните `sudo docker compose up -d --wait web`.
+Reverse proxy направляет запросы на `http://192.168.1.10:18000`, передавая публичный домен в `Host` и исходную схему в `X-Forwarded-Proto`. Пример блока Caddy на машине прокси:
 
-## SOCKS5-прокси на хосте
+```caddyfile
+study.example.com {
+    encode zstd gzip
+    request_body {
+        max_size 128KB
+    }
+    reverse_proxy 192.168.1.10:18000
+}
+```
 
-Для прокси `socks5://127.0.0.1:1080` на Linux-хосте добавьте в `.env`:
+Разрешите доступ к порту приложения только с IP reverse proxy. Используйте сетевой firewall либо правила, подходящие для установленного firewall backend Docker; не полагайтесь только на UFW, поскольку опубликованные Docker-порты могут обходить его правила. Не публикуйте порт на всех интерфейсах без необходимости. HTTP между машинами подходит для доверенной изолированной сети; через недоверенную сеть используйте защищённый канал.
+
+Если reverse proxy сам запущен в контейнере, его `127.0.0.1` относится к этому контейнеру: настройте отдельную доступную сеть или адрес upstream.
+
+Не включайте логирование полных URL `/auth/telegram`: параметры содержат подписанные данные входа и персональные сведения. Изменение адреса или порта применяется командой `sudo docker compose up -d --wait web`.
+
+## 5. Необязательный SOCKS5 для Telegram
+
+Если Telegram доступен напрямую, оставьте `BOT_PROXY_URL` пустым и используйте два основных Compose-файла.
+
+Для прокси, доступного из Docker-сети, укажите его URL в `BOT_PROXY_URL`. Для SOCKS5, слушающего **loopback Linux-хоста**, например `127.0.0.1:1080`, задайте:
 
 ```dotenv
-BOT_PROXY_URL=socks5://127.0.0.1:1080
 COMPOSE_FILE=compose.yaml:compose.prod.yaml:compose.host-proxy.yaml
+BOT_PROXY_URL=socks5://127.0.0.1:1080
 ```
 
-Подключите третий Compose-файл: только бот будет использовать сеть хоста, поэтому его `127.0.0.1` укажет на хостовый прокси. Сайт останется в обычной Docker-сети. Открывать SOCKS5-порт наружу не требуется. Telegram-запросы бота, включая polling и уведомления, используют заданный прокси; при его недоступности прямого обхода нет.
+Третий файл включает сеть хоста только для бота. Это осознанно даёт боту доступ к сетевым сервисам хоста; web остаётся в Docker-сети. SOCKS5-порт не требуется открывать наружу. Прокси должен запускаться автоматически до бота. Polling, команды и уведомления используют одну прокси-сессию; при недоступности прокси прямого обхода нет. Перезапуск контейнера не исправит неработающий прокси.
+
+## 6. Первоначальный запуск
+
+Эти команды рассчитаны на **новую пустую базу**. Если переносите существующие данные, сначала сохраните и проверьте их резервную копию, затем используйте процедуру восстановления и миграции.
 
 ```bash
-export COMPOSE_FILE=compose.yaml:compose.prod.yaml:compose.host-proxy.yaml
-docker compose build web bot
-docker compose up -d --wait web bot
+cd /opt/study-helper
+sudo docker compose config --quiet
+sudo docker compose build --pull web bot
+sudo bash deploy/smoke.sh
+sudo docker compose run --rm --no-deps migrate
+sudo docker compose run --rm --no-deps migrate python -m study.manage check
+sudo docker compose up -d --wait web bot
 ```
 
-Используйте эти три файла и для последующих команд управления ботом. Пустой `BOT_PROXY_URL` означает прямое соединение. Прокси должен быть запущен на хосте до запуска бота.
+При ошибке любой команды устраните её перед продолжением. Миграция выполняется отдельно: web и bot в production автоматически схему не создают. Если `RELEASE_TAG` отличается от `local`, передайте соответствующий образ в smoke: `sudo bash deploy/smoke.sh study-helper:YOUR_TAG`.
+
+Контейнеры используют read-only rootfs, временный `/tmp`, сброшенные capabilities, no-new-privileges, ограничения памяти/PID и ротацию логов. `restart: unless-stopped` запускает контейнеры после перезапуска Docker, если они не были остановлены вручную. Обеспечьте автозапуск Docker средствами ОС.
+
+Для старого volume с другим владельцем сначала остановите оба сервиса. Следующая разовая команда изменяет владельца только данных приложения:
+
+```bash
+sudo docker compose stop web bot
+sudo docker compose run --rm --no-deps --user 0 \
+  --cap-add CHOWN --cap-add FOWNER --cap-add DAC_OVERRIDE migrate \
+  sh -c 'chown -R 10001:10001 /app/data && chmod 700 /app/data'
+```
+
+Затем сделайте резервную копию до миграции. Не удаляйте volume для исправления ошибок схемы или прав.
+
+## 7. Проверка доступности
+
+```bash
+sudo docker compose ps
+sudo bash deploy/check-health.sh
+sudo docker compose logs --tail=100 web bot
+```
+
+При проверке по IP передавайте домен из `BASE_URL`, иначе production-защита Host вернёт HTTP 400. Для локальной публикации:
+
+```bash
+curl --fail-with-body http://127.0.0.1:8000/health \
+  -H 'Host: study.example.com'
+```
+
+Для публикации в LAN выполните на сервере приложения и на машине reverse proxy:
+
+```bash
+curl --fail-with-body http://192.168.1.10:18000/health \
+  -H 'Host: study.example.com'
+```
+
+Подставьте выбранные адрес, порт и домен. Ожидается HTTP 200. Затем проверьте весь HTTPS-маршрут:
+
+```bash
+curl --fail-with-body https://study.example.com/health
+```
+
+HTTP 400 с сообщением `Host ... is not trusted` означает, что порт доступен, но передан неправильный Host. `Connection refused` указывает на отсутствие слушающего порта или отказ соединения; timeout требует проверки маршрута и firewall. При `unhealthy` сначала смотрите логи контейнера. Ошибка `Read-only file system` с путём репозитория обычно означает неверный `DATABASE_URL`; правильный путь указан выше.
+
+Откройте бота, отправьте `/start`, войдите на сайт через Telegram и проверьте сохранение результата на отдельном тестовом аккаунте.
 
 ## Проверка перед открытием доступа
 
@@ -99,23 +222,23 @@ docker compose up -d --wait web bot
 - Опрос самочувствия появляется один раз в день, `/rest` подавляет только вечернее сообщение этого дня.
 - Уведомление за 15 минут и вечернее сообщение приходят в заданном часовом поясе. Недельный итог можно проверить `/weekly`; доставку по воскресному расписанию проверить отдельно.
 - В настройках скачивается JSON только своего аккаунта. Удаление аккаунта проверено на отдельном тестовом аккаунте после экспорта.
-- `bash deploy/check-health.sh` завершается с кодом 0. Сделана резервная копия и успешно проверено её восстановление в отдельную базу.
+- `sudo bash deploy/check-health.sh` завершается с кодом 0. Сделана резервная копия и успешно проверено её восстановление в отдельную базу.
 
 Эти внешние проверки требуют реального домена, токена и отдельного тестового пользователя. Автоматические тесты с искусственным Telegram transport их не заменяют.
 
 ## Резервные копии и восстановление
 
 ```bash
-cd /srv/study-helper
-bash deploy/backup.sh
+cd /opt/study-helper
+sudo bash deploy/backup.sh
 ```
 
 SQLite backup API создаёт согласованный снимок, включая данные WAL, при работающих сервисах. Файл создаётся с правами 0600; существующий файл не перезаписывается; выполняются integrity_check и foreign_key_check. Копирование одного `study.db` во время работы непригодно для резервирования WAL-базы. Первый backup существующей базы делайте **до миграции**: команда backup не требует текущей версии схемы.
 
-Настройте ежедневный запуск `deploy/backup.sh` в вашем планировщике, например от отдельного оператора Docker через cron:
+Настройте ежедневный запуск `deploy/backup.sh` в вашем планировщике, через root crontab (`sudo crontab -e`):
 
 ```cron
-15 2 * * * cd /srv/study-helper && /bin/bash deploy/backup.sh
+15 2 * * * cd /opt/study-helper && /bin/bash deploy/backup.sh >> /var/log/study-helper-backup.log 2>&1
 ```
 
 Время cron определяется часовым поясом сервера. Для такого расписания максимальная потеря данных при полном отказе диска — до суток; измените частоту под ваши требования. Ошибки задания должны поступать оператору. Дополнительно ежедневно копируйте архив в зашифрованное хранилище вне этого сервера, храните, например, 30 дней и проверяйте восстановление хотя бы ежемесячно. Сам репозиторий не настраивает внешний storage или канал оповещений. Команда `prune` не удаляет резервные копии: срок их хранения задаётся на уровне хранилища.
@@ -123,43 +246,61 @@ SQLite backup API создаёт согласованный снимок, вкл
 Проверка архива в отдельной базе, без изменения рабочей:
 
 ```bash
-export COMPOSE_FILE=compose.yaml:compose.prod.yaml
-docker compose run --rm --no-deps -e DATABASE_URL=sqlite:////tmp/restore-test.db backup \
+sudo docker compose run --rm --no-deps -e DATABASE_URL=sqlite:////tmp/restore-test.db backup \
   sh -c 'python -m study.manage restore /backups/study-YYYYMMDDTHHMMSSZ.db --confirm-stopped && python -m study.manage check'
 ```
 
 Восстановление рабочей базы — замена текущих данных архивом. Остановите **оба** сервиса, сначала сохраните текущую базу отдельным backup и только затем:
 
 ```bash
-docker compose stop web bot
-bash deploy/backup.sh
-docker compose run --rm --no-deps backup python -m study.manage restore \
+sudo docker compose stop web bot
+sudo bash deploy/backup.sh
+sudo docker compose run --rm --no-deps backup python -m study.manage restore \
   /backups/study-YYYYMMDDTHHMMSSZ.db --confirm-stopped
-docker compose run --rm --no-deps migrate python -m study.manage check
-docker compose up -d --wait web bot
-bash deploy/check-health.sh
+sudo docker compose run --rm --no-deps migrate python -m study.manage check
+sudo docker compose up -d --wait web bot
+sudo bash deploy/check-health.sh
 ```
 
 Флаг `--confirm-stopped` — явное подтверждение оператора, а не автоматическая проверка остановки. После восстановления могут повториться сообщения, чьи ключи доставки отсутствуют в архиве. Учитывайте запросы на удаление аккаунтов, сделанные после даты архива: восстановление не должно возвращать удалённые персональные данные в публичный доступ. Сначала примените такие удаления в закрытом окружении. Резервные копии содержат персональные данные и ответы о самочувствии; ограничьте доступ и соблюдайте срок хранения.
 
 ## Обновление и откат
 
+Для обновления текущей ветки с `RELEASE_TAG=local`:
+
+```bash
+cd /opt/study-helper
+git status --short
+git rev-parse HEAD
+sudo docker image tag study-helper:local "study-helper:rollback-$(date -u +%Y%m%dT%H%M%SZ)"
+sudo docker compose stop web bot
+sudo bash deploy/backup.sh
+git pull --ff-only
+sudo docker compose build --pull web bot
+sudo bash deploy/smoke.sh
+sudo docker compose run --rm --no-deps migrate
+sudo docker compose run --rm --no-deps migrate python -m study.manage check
+sudo docker compose up -d --wait web bot
+sudo bash deploy/check-health.sh
+```
+
+Сначала убедитесь, что рабочее дерево чистое; сохраните выведенный коммит, тег образа отката и имя резервной копии. Команды выполняются последовательно: при любой ошибке остановитесь и устраните причину. Перед миграцией проверьте восстановление созданного архива по процедуре выше. Для релизов с отдельными тегами используйте следующий порядок:
+
 1. Выполните тесты/CI на точном коммите релиза. Соберите образ с новым RELEASE_TAG (в `.env`), сохраните предыдущий тег и коммит. Не перезаписывайте опубликованный тег релиза.
 2. Остановите web и bot, создайте и проверьте backup. Выполните миграцию новым образом при остановленных сервисах. При ошибке не запускайте сервисы на частично изменённой схеме; сохраните диагностику и восстановите проверенную копию.
 3. Запустите `up -d --wait web bot`, проверьте health и основной сценарий через отдельный аккаунт. Сверьте часы/часовой пояс сервера.
 4. Для отката остановите оба сервиса, сохраните текущее состояние. Если схема совместима, верните прежние коммит и тег образа. При несовместимой схеме восстановите предрелизную базу совместимым образом, затем запустите сервисы. Откат базы теряет более новые записи; нельзя делать его незаметно для пользователей.
 
-Не выполняйте `docker compose down -v` на рабочем проекте: это удаляет постоянный volume. Скрипт smoke использует уникальный отдельный проект, синтетические ключи и временный volume; он удаляет только собственные ресурсы.
+Не выполняйте `sudo docker compose down -v` на рабочем проекте: это удаляет постоянный volume. Скрипт smoke использует уникальный отдельный проект, синтетические ключи и временный volume; он удаляет только собственные ресурсы.
 
 ## Наблюдение и сбои
 
 `/live` проверяет web-процесс; `/health` проверяет соединение с SQLite и чтение таблицы пользователей, возвращает 503 при отказе. Проверка bot-health требует свежих heartbeat scheduler и успешного Telegram long polling, доступной базы и отсутствия проваленных/давно ожидающих ответов. Это не проверка отправки сообщения каждому пользователю.
 
 ```bash
-export COMPOSE_FILE=compose.yaml:compose.prod.yaml
-bash deploy/check-health.sh
-docker compose ps
-docker compose logs --tail=100 web bot
+sudo bash deploy/check-health.sh
+sudo docker compose ps
+sudo docker compose logs --tail=100 web bot
 ```
 
 Подключите check-health.sh к существующему мониторингу с уведомлением оператора и отдельно контролируйте HTTPS снаружи, место на диске, возраст последней успешной внешней копии и срок сертификата. Настройки проверок описаны в [Compose healthcheck](https://docs.docker.com/reference/compose-file/services/#healthcheck). Docker помечает контейнер unhealthy, но сам по этому признаку его не перезапускает. `restart: unless-stopped` восстанавливает завершившийся процесс; причины unhealthy требуют диагностики.
@@ -167,15 +308,15 @@ docker compose logs --tail=100 web bot
 Результат, изменение черновика и исходящий ответ бота фиксируются одной транзакцией. Telegram вызывается после commit. При ошибке ответ остаётся в bot_outbox, повторы выполняются с задержкой; после 10 неудач запись отмечается failed, health бота требует внимания. Если пользователь заблокировал бота, рассылка для него отключается, недоставляемые ответы этому чату удаляются; это не переводит весь сервис в unhealthy. Содержание сообщений в ошибки не выводится. После устранения причины:
 
 ```bash
-docker compose run --rm --no-deps migrate python -m study.manage requeue
+sudo docker compose run --rm --no-deps migrate python -m study.manage requeue
 ```
 
-`requeue` повторяет failed-ответы, но не удаляет учебные результаты. Если причина неустранима, после диагностики оператор может явно удалить только failed-ответы: `docker compose run --rm --no-deps migrate python -m study.manage discard-failed --confirm`. Учебные результаты остаются в базе; пользователь увидит их в истории. Зависимые от недоставленного сообщения ответы также будут помечены failed при следующем проходе очереди — проверьте health после очистки. При аварии после принятия Telegram сообщения, но до записи результата доставки возможно повторное сообщение; exactly-once для Telegram не обещается.
+`requeue` повторяет failed-ответы, но не удаляет учебные результаты. Если причина неустранима, после диагностики оператор может явно удалить только failed-ответы: `sudo docker compose run --rm --no-deps migrate python -m study.manage discard-failed --confirm`. Учебные результаты остаются в базе; пользователь увидит их в истории. Зависимые от недоставленного сообщения ответы также будут помечены failed при следующем проходе очереди — проверьте health после очистки. При аварии после принятия Telegram сообщения, но до записи результата доставки возможно повторное сообщение; exactly-once для Telegram не обещается.
 
 Ежедневно или еженедельно удаляйте истёкшие приглашения, ключи доставок старше 90 дней и неиспользуемые ссылки сообщений:
 
 ```bash
-docker compose run --rm --no-deps migrate python -m study.manage prune
+sudo docker compose run --rm --no-deps migrate python -m study.manage prune
 ```
 
 История на сайте разбита по 50 записей, фильтр предмета выполняется сервером. Аналитика запрашивает 28/56/84/365 дней; полная история доступна через экспорт. SQLite рассчитана на один сервер и умеренную нагрузку. Проверяйте задержки на собственном объёме данных перед расширением аудитории.
