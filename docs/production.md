@@ -56,12 +56,27 @@ docker compose run --rm --no-deps --user 0 --cap-add CHOWN --cap-add FOWNER --ca
 
 Затем сделайте backup новым образом до миграции. Это отдельная операция перехода со старого UID; обычные сервисы всегда запускаются без root. Не заменяйте в команде `/app/data` корнем хоста. Если RELEASE_TAG отличается от `local`, передавайте точный образ в smoke: `bash deploy/smoke.sh study-helper:ВАШ_ТЕГ`.
 
+## Адрес и порт сайта
+
+Production-пример `.env` задаёт `COMPOSE_FILE=compose.yaml:compose.prod.yaml`, поэтому из каталога проекта достаточно `sudo docker compose up -d --build --wait web bot` (при первом запуске предварительно выполните миграцию). Для SOCKS5 на хосте добавьте `:compose.host-proxy.yaml` к `COMPOSE_FILE`.
+
+Для reverse proxy на этом же сервере оставьте `WEB_BIND_ADDRESS=127.0.0.1`. Для reverse proxy на соседней машине задайте LAN-адрес **сервера приложения** и свободный порт:
+
+```dotenv
+WEB_BIND_ADDRESS=192.168.1.10
+WEB_PORT=18000
+BASE_URL=https://study.example.com
+```
+
+Прокси должен направлять запросы на `http://192.168.1.10:18000`, передавая исходный Host и X-Forwarded-Proto. HTTPS завершается на прокси; `BASE_URL` остаётся публичным HTTPS-адресом. Внутренний порт контейнера и healthcheck остаются 8000. Разрешите доступ к опубликованному порту только с IP прокси средствами сетевого firewall или цепочки DOCKER-USER; публикация Docker может обходить правила UFW. После изменения `.env` выполните `sudo docker compose up -d --wait web`.
+
 ## SOCKS5-прокси на хосте
 
 Для прокси `socks5://127.0.0.1:1080` на Linux-хосте добавьте в `.env`:
 
 ```dotenv
 BOT_PROXY_URL=socks5://127.0.0.1:1080
+COMPOSE_FILE=compose.yaml:compose.prod.yaml:compose.host-proxy.yaml
 ```
 
 Подключите третий Compose-файл: только бот будет использовать сеть хоста, поэтому его `127.0.0.1` укажет на хостовый прокси. Сайт останется в обычной Docker-сети. Открывать SOCKS5-порт наружу не требуется. Telegram-запросы бота, включая polling и уведомления, используют заданный прокси; при его недоступности прямого обхода нет.

@@ -3,7 +3,7 @@ services:
     build: .
     env_file: .env
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8000}:8000"
     volumes:
       - study-data:/app/data
       - ./study/bot_messages.toml:/app/study/bot_messages.toml:ro
