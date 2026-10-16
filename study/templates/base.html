@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru"{% if request.endpoint == 'login' %} data-theme="dark" data-fixed-theme="dark"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <script nonce="{{g.nonce}}">try{const t=localStorage.getItem("theme");document.documentElement.dataset.theme=t||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
+  <script nonce="{{g.nonce}}">if(!document.documentElement.dataset.fixedTheme)try{const t=localStorage.getItem("theme");document.documentElement.dataset.theme=t||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
   <title>study-bot</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&amp;icon_names=add,check,chevron_left,chevron_right,close,edit&amp;display=block">
   <link rel="stylesheet" href="{{url_for('static',filename='style.css')}}">
   <script defer src="{{url_for('static',filename='app.js')}}"></script>
 </head>
 <body>
-<header>
+{% if request.endpoint != 'login' %}<header>
   {% if g.user %}
   <nav aria-label="Разделы">
     {% for key,label in [('goals','Цели'),('schedule','Расписание'),('analytics','Аналитика'),('editing','Редактирование'),('settings','Настройки')] %}
@@ -32,7 +32,7 @@
     {% endif %}
   </div>
   {% endif %}
-</header>
+</header>{% endif %}
 <main class="{{'board-page' if section in ('goals','schedule')}}">
   {% for category,message in get_flashed_messages(with_categories=true) %}<p class="notice {{category}}" role="status">{{message.rstrip('.')|display_label}}</p>{% endfor %}
   {% block content %}{% endblock %}

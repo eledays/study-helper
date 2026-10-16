@@ -126,7 +126,7 @@ def create_app(settings=None):
 
     @app.context_processor
     def common():
-        pupils = list(g.db.scalars(select(User).where(User.teacher_id == g.user.id))) if g.user else []
+        pupils = list(g.db.scalars(select(User).where(User.teacher_id == g.user.id))) if g.user and g.user.is_teacher else []
         avatar = g.db.get(UserAvatar, g.user.id) if g.user else None
         return {'avatar_url': avatar.photo_url if avatar else '', 'csrf': session['csrf'], 'pupils': pupils, 'bot_username': settings.bot_username, 'base_url': settings.base_url.rstrip('/'), 'debug_login_enabled': settings.debug}
 
@@ -553,6 +553,8 @@ def create_app(settings=None):
 
     @app.post('/invite')
     def invite_create():
+        if not g.user.is_teacher:
+            abort(403)
         token = secrets.token_urlsafe(18)
         g.db.add(Invite(token=token, teacher_id=g.user.id, expires=datetime.now(UTC).replace(tzinfo=None)+timedelta(days=7)))
         g.db.commit()

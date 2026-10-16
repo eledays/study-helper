@@ -14,7 +14,7 @@ def monday(day):
 
 def accessible(s, actor_id, student_id, results=False):
     student = s.get(User, student_id)
-    if not student or (actor_id != student_id and (results or student.teacher_id != actor_id)):
+    if not student or (actor_id != student_id and (results or student.teacher_id != actor_id or not (actor := s.get(User, actor_id)) or not actor.is_teacher)):
         raise PermissionError(bot_text('errors.no_access'))
     return student
 

@@ -294,3 +294,20 @@ def test_bot_health_requires_polling_and_scheduler(db, tmp_path):
     with db.session.begin() as s:
         s.add(BotOutbox(chat_id=100, method='send_message', payload={'text':'test'}, failed=True))
     with pytest.raises(RuntimeError): bot_health(db, heartbeat, polling)
+
+
+def test_teacher_role_migration_defaults_false_and_is_repeatable(tmp_path):
+    url = f'sqlite:///{tmp_path}/legacy.db'
+    database = Database(url)
+    with database.engine.begin() as conn:
+        conn.execute(text("INSERT INTO users (telegram_id,name,gender,timezone,evening,reminders,wellbeing,share_wellbeing,bot_active) VALUES (999,'Old','neutral','Europe/Moscow','21:00',1,1,1,0)"))
+        conn.execute(text('ALTER TABLE users DROP COLUMN is_teacher'))
+        conn.execute(text('UPDATE schema_version SET version=1'))
+    database.engine.dispose()
+    with pytest.raises(RuntimeError):
+        Database(url, initialize=False)
+    for _ in range(2):
+        migrated = Database(url)
+        with migrated.session() as s:
+            assert s.scalar(select(User).where(User.telegram_id == 999)).is_teacher is False
+        migrated.engine.dispose()

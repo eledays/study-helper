@@ -131,3 +131,22 @@ def test_signed_telegram_avatar_is_stored_updated_and_optional(db):
     assert 'class="profile-avatar"' not in client.get('/goals').data.decode()
     assert client.get('/auth/telegram',query_string=signed()).status_code==302
     assert 'class="profile-avatar"' not in client.get('/goals').data.decode()
+
+
+def test_teacher_role_controls_settings_and_invites(client, db):
+    from study.models import User
+    page = client.get('/settings').text
+    assert 'Мои данные' not in page
+    assert 'Учитель и ученики' not in page
+    assert client.post('/invite', data={'csrf': 'test-csrf'}).status_code == 403
+    with db.session.begin() as s:
+        s.get(User, 1).is_teacher = True
+    assert 'Учитель и ученики' in client.get('/settings').text
+    assert client.post('/invite', data={'csrf': 'test-csrf'}).status_code == 302
+
+
+def test_login_has_fixed_dark_theme(client):
+    page = client.get('/login').text
+    assert 'data-theme="dark" data-fixed-theme="dark"' in page
+    assert 'id="theme-toggle"' not in page
+    assert 'id="theme-toggle"' in client.get('/settings').text

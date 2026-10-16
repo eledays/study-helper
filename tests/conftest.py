@@ -8,7 +8,7 @@ from study.web import create_app
 def db(tmp_path):
     database = Database(f'sqlite:///{tmp_path}/test.db')
     with database.session.begin() as s:
-        s.add_all([User(id=1, telegram_id=100, name='Саша'), User(id=2, telegram_id=200, name='Учитель'),
+        s.add_all([User(id=1, telegram_id=100, name='Саша'), User(id=2, telegram_id=200, name='Учитель', is_teacher=True),
                    User(id=3, telegram_id=300, name='Другой')])
         s.flush()
         s.get(User, 1).teacher_id = 2

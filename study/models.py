@@ -11,6 +11,7 @@ class User(Base):
     telegram_id: Mapped[int] = mapped_column(unique=True)
     name: Mapped[str] = mapped_column(default='')
     gender: Mapped[str] = mapped_column(default='neutral')
+    is_teacher: Mapped[bool] = mapped_column(default=False, server_default='0')
     teacher_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'))
     timezone: Mapped[str] = mapped_column(default='Europe/Moscow')
     evening: Mapped[str] = mapped_column(default='21:00')

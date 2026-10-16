@@ -121,6 +121,16 @@ def router(db, settings):
         ids = set(data['all_ids'])
         return sorted((task for task in tasks if task.id in ids), key=task_order_key)
 
+    async def write_access_message(message):
+        return message.write_access_allowed is not None
+
+    @dp.message(write_access_message)
+    async def registration_welcome(message: Message):
+        with response_session() as s:
+            user = get_user(s, message.from_user)
+            user.bot_active = True
+            await message.answer(bot_text('welcome.greeting', base_url=settings.base_url.rstrip('/')))
+
     @dp.message(CommandStart())
     async def start(message: Message):
         with response_session() as s:
@@ -130,7 +140,7 @@ def router(db, settings):
             if arg.startswith('invite_'):
                 token = arg.removeprefix('invite_')
                 invite = s.get(Invite, token)
-                if not invite or invite.expires < datetime.now(UTC).replace(tzinfo=None) or invite.teacher_id == user.id:
+                if not invite or invite.expires < datetime.now(UTC).replace(tzinfo=None) or invite.teacher_id == user.id or not s.get(User, invite.teacher_id).is_teacher:
                     await message.answer(bot_text('welcome.invalid_invite')); return
                 teacher = s.get(User, invite.teacher_id)
                 await message.answer(bot_text('welcome.teacher_invite', teacher_name=teacher.name),
@@ -306,7 +316,7 @@ def router(db, settings):
                     await call.message.answer(bot_text('entry.cancelled')); return
                 if command == 'accept':
                     invite = s.get(Invite, arg)
-                    if not invite or invite.expires < datetime.now(UTC).replace(tzinfo=None) or invite.teacher_id == user.id:
+                    if not invite or invite.expires < datetime.now(UTC).replace(tzinfo=None) or invite.teacher_id == user.id or not s.get(User, invite.teacher_id).is_teacher:
                         raise UserMessageError(bot_text('errors.invalid_invite'))
                     if user.teacher_id and user.teacher_id != invite.teacher_id:
                         raise UserMessageError(bot_text('errors.unlink_teacher'))

@@ -482,3 +482,23 @@ def test_no_button_menu_after_cancel_unknown_text_or_evening(db):
             messages = list(due_messages(s, s.get(User, 1), datetime(2026, 10, 18, 18, tzinfo=ZoneInfo('UTC'))))
             assert all(markup is None for _, _, markup in messages)
     asyncio.run(run())
+
+
+def test_registration_write_access_sends_start_greeting(db):
+    from aiogram.types import WriteAccessAllowed
+    from study.messages import bot_text
+    async def run():
+        transport = FakeSession()
+        bot = Bot('123456:ABCDEF_fake_token', session=transport)
+        settings = Settings()
+        dp = router(db, settings)
+        message = Message(message_id=900, date=datetime.now(),
+            chat=Chat(id=100, type='private'),
+            from_user=TelegramUser(id=100, is_bot=False, first_name='Саша'),
+            write_access_allowed=WriteAccessAllowed(from_request=True))
+        await dp.feed_update(bot, Update(update_id=900, message=message))
+        assert len(transport.messages) == 1
+        assert transport.messages[0].text == bot_text('welcome.greeting', base_url=settings.base_url.rstrip('/'))
+        with db.session() as s:
+            assert s.get(User, 1).bot_active
+    asyncio.run(run())

@@ -17,7 +17,7 @@ const themeButton=document.getElementById('theme-toggle');
 function updateThemeButton(){const dark=document.documentElement.dataset.theme==='dark';if(themeButton){themeButton.textContent=dark?'Светлая тема':'Тёмная тема';themeButton.setAttribute('aria-pressed',String(dark));}}
 updateThemeButton();
 themeButton?.addEventListener('click',()=>{document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('theme',document.documentElement.dataset.theme)}catch(e){}updateThemeButton()});
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change',event=>{try{if(localStorage.getItem('theme'))return}catch(e){}document.documentElement.dataset.theme=event.matches?'dark':'light';updateThemeButton()});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',event=>{if(document.documentElement.dataset.fixedTheme)return;try{if(localStorage.getItem('theme'))return}catch(e){}document.documentElement.dataset.theme=event.matches?'dark':'light';updateThemeButton()});
 document.querySelectorAll('form:not([data-goal-selection])').forEach(form=>{
  const subject=form.querySelector('select[name="subject_id"]');if(!subject)return;
  const task=form.querySelector('select[name="task_id"]'),kind=form.querySelector('select[name="kind"]'),fieldset=form.querySelector('fieldset');

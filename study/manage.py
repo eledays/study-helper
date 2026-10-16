@@ -12,7 +12,7 @@ from sqlalchemy.engine import make_url
 
 from .config import Settings
 from .db import Database
-from .models import BotOutbox, BotMessage, Draft, Invite, Delivery
+from .models import BotOutbox, BotMessage, Draft, Invite, Delivery, User
 
 
 def sqlite_path(url):
@@ -89,6 +89,9 @@ def main():
     command = sub.add_parser('restore', help='Восстановить копию; только при остановленных сервисах')
     command.add_argument('path')
     command.add_argument('--confirm-stopped', action='store_true', required=True)
+    command = sub.add_parser('set-teacher', help='Выдать или отозвать роль учителя по Telegram ID')
+    command.add_argument('telegram_id', type=int)
+    command.add_argument('--revoke', action='store_true')
     args = parser.parse_args()
     settings = Settings()
     if args.command == 'backup':
@@ -99,7 +102,13 @@ def main():
         Database(settings.database_url).engine.dispose()
     else:
         db = Database(settings.database_url, initialize=False)
-        if args.command == 'check':
+        if args.command == 'set-teacher':
+            with db.session.begin() as s:
+                user = s.scalar(select(User).where(User.telegram_id == args.telegram_id))
+                if user is None:
+                    parser.error('Пользователь с таким Telegram ID не найден')
+                user.is_teacher = not args.revoke
+        elif args.command == 'check':
             checked_connection(sqlite_path(settings.database_url)).close()
         elif args.command == 'bot-health':
             bot_health(db)

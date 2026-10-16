@@ -22,9 +22,19 @@ class Database:
                     version = conn.execute(text('SELECT version FROM schema_version WHERE id=1')).scalar_one()
             except SQLAlchemyError:
                 raise RuntimeError('База недоступна или схема не инициализирована. Проверьте доступ и выполните python -m study.manage migrate') from None
-            if version != 1:
+            if version != 2:
                 raise RuntimeError('Неподдерживаемая версия схемы. Выполните python -m study.manage migrate')
             return
+        # Add the explicit teacher role to existing databases. Migration is additive.
+        inspector = inspect(self.engine)
+        if inspector.has_table('schema_version'):
+            with self.engine.connect() as conn:
+                version = conn.execute(text('SELECT version FROM schema_version WHERE id=1')).scalar_one_or_none()
+                if version not in (None, 1, 2):
+                    raise RuntimeError('База создана другой версией приложения; откат схемы запрещён')
+        if inspector.has_table('users') and 'is_teacher' not in {c['name'] for c in inspector.get_columns('users')}:
+            with self.engine.begin() as conn:
+                conn.execute(text('ALTER TABLE users ADD COLUMN is_teacher BOOLEAN NOT NULL DEFAULT FALSE'))
         # Version 1 adopts the existing additive schema without changing IDs or
         # historical scores. Refuse unknown column changes instead of guessing.
         inspector = inspect(self.engine)
@@ -34,11 +44,6 @@ class Database:
                 missing = set(table.columns.keys()) - columns
                 if missing:
                     raise RuntimeError(f'Несовместимая схема {table.name}: отсутствуют {sorted(missing)}. Восстановите совместимую версию; требуется отдельная миграция')
-        if inspector.has_table('schema_version'):
-            with self.engine.connect() as conn:
-                version = conn.execute(text('SELECT version FROM schema_version WHERE id=1')).scalar_one_or_none()
-                if version not in (None, 1):
-                    raise RuntimeError('База создана другой версией приложения; откат схемы запрещён')
         Base.metadata.create_all(self.engine)
         for table in Base.metadata.sorted_tables:
             for index in table.indexes:
@@ -58,4 +63,5 @@ class Database:
         with self.engine.begin() as conn:
             conn.execute(text('CREATE TABLE IF NOT EXISTS schema_version (id INTEGER PRIMARY KEY CHECK (id=1), version INTEGER NOT NULL)'))
             if conn.execute(text('SELECT version FROM schema_version WHERE id=1')).scalar_one_or_none() is None:
-                conn.execute(text('INSERT INTO schema_version (id, version) VALUES (1, 1)'))
+                conn.execute(text('INSERT INTO schema_version (id, version) VALUES (1, 2)'))
+            conn.execute(text('UPDATE schema_version SET version=2 WHERE id=1'))
