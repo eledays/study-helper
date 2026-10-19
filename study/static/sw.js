@@ -1,4 +1,4 @@
-const CACHE = 'study-shell-v6';
+const CACHE = 'study-shell-v7';
 const ASSETS = ['/static/offline.html', '/static/style.css', '/static/app.js', '/static/navigation.js', '/static/favicon.svg', '/static/icon-192.png', '/static/icon-512.png', '/static/icon-maskable.png'];
 self.addEventListener('install', event => {
  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
