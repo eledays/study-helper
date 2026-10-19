@@ -37,3 +37,34 @@ html[data-fixed-theme] main{max-width:1200px;padding:clamp(48px,12vh,120px) 24px
 .planning-board:has(.card-board.is-editing),.planning-board:has(.board-create:not([hidden])){padding-top:0}
 @media(max-width:650px){.board-toolbar{padding:0 16px 12px}.week-switch{width:100%}.card-board{padding-top:12px}}
 @media(max-width:350px){.week-switch time{font-size:12px}}
+
+/* Mobile navigation and compact planning controls; desktop styles stay above. */
+.mobile-menu-toggle{display:none}
+@media(max-width:750px){
+ header{flex-wrap:nowrap;gap:10px;padding:12px 16px}
+ .mobile-menu-toggle{display:grid;place-items:center;flex:none;width:36px;height:36px;padding:0;margin:0;border-radius:9px}
+ .mobile-menu-toggle .material-symbols-outlined{font-size:24px}
+ header .profile-cards{width:auto;min-width:0;flex:1;order:0;justify-content:flex-end;gap:6px;margin-left:auto}
+ header .profile-card{height:36px;min-height:36px;padding:0 10px;font-size:13px;border-radius:9px;min-width:0}
+ header .profile-name{max-width:50%;gap:6px;flex:0 1 auto;line-height:20px}
+ header .profile-name:only-child{max-width:200px}
+ header .profile-avatar{width:24px;height:24px}
+ header .profile-student{max-width:50%;flex:0 1 auto;padding:0 6px}
+ header .profile-student select{height:36px;max-width:170px;width:100%;margin:0;padding:0 4px;font-size:13px;line-height:20px;text-overflow:ellipsis}
+ html.mobile-menu-open{overflow:hidden}
+ .mobile-menu{position:fixed;inset:0 auto 0 0;width:min(300px,calc(100% - 48px));max-width:none;height:100dvh;max-height:100dvh;margin:0;padding:20px 16px;padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(20px,env(safe-area-inset-bottom));border:0;border-radius:0 16px 16px 0;background:var(--paper);color:var(--ink);overflow-y:auto;box-shadow:8px 0 32px #0002}
+ .mobile-menu::backdrop{background:rgb(0 0 0 / .35)}
+ .mobile-menu-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;gap:12px}
+ .mobile-menu-heading h2{margin:0;font-size:20px}
+ .mobile-menu-heading button{display:grid;place-items:center;width:36px;height:36px;padding:0;margin:0}
+ .mobile-menu nav{display:flex;flex-direction:column;gap:6px;margin:0;width:100%}
+ .mobile-menu nav a{flex:none;padding:12px 14px;text-align:left;font-size:15px}
+ .mobile-menu .theme-toggle{display:block;width:100%;margin:24px 0 0;padding:12px 14px;text-align:left;font-size:14px}
+ .board-toolbar{padding:0 16px 12px}
+ .week-switch{width:100%;grid-template-columns:36px minmax(0,1fr) 36px;gap:8px;padding:0;background:transparent;border-radius:0}
+ .week-switch a,.week-switch time{height:36px;min-height:36px;border-radius:9px;background:var(--surface)}
+ .week-switch a{padding:0}.week-switch time{display:grid;place-items:center;padding:0 4px;font-size:13px}
+ .week-switch a .material-symbols-outlined{font-size:22px}
+ .schedule-board{width:calc(100% - 32px);max-width:none}
+}
+@media(max-width:350px){.week-switch time{font-size:12px}}

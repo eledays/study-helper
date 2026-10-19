@@ -12,12 +12,13 @@
   <link rel="apple-touch-icon" href="/static/icon-180.png">
   <title>study-bot</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="{{url_for('static',filename='favicon.svg')}}">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&amp;icon_names=add,check,chevron_left,chevron_right,close,edit&amp;display=block">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&amp;icon_names=add,check,chevron_left,chevron_right,close,edit,menu&amp;display=block">
   <link rel="stylesheet" href="{{url_for('static',filename='style.css')}}">
   <script defer src="{{url_for('static',filename='app.js')}}"></script>
 </head>
 <body>
 {% if request.endpoint != 'login' %}<header>
+  <button type="button" class="quiet mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Открыть меню" aria-controls="mobile-menu" aria-expanded="false"><span class="material-symbols-outlined" aria-hidden="true">menu</span></button>
   {% if g.user %}
   <nav aria-label="Разделы">
     {% for key,label in [('goals','Цели'),('schedule','Расписание'),('analytics','Аналитика'),('editing','Редактирование'),('settings','Настройки')] %}
@@ -39,7 +40,11 @@
     {% endif %}
   </div>
   {% endif %}
-</header>{% endif %}
+</header>
+<dialog id="mobile-menu" class="mobile-menu" aria-labelledby="mobile-menu-title">
+  <div class="mobile-menu-heading"><h2 id="mobile-menu-title">Меню</h2><button type="button" class="quiet" id="mobile-menu-close" aria-label="Закрыть меню"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+  <div class="mobile-menu-content"></div>
+</dialog>{% endif %}
 <main class="{{'board-page' if section in ('goals','schedule')}}">
   {% for category,message in get_flashed_messages(with_categories=true) %}<p class="notice {{category}}" role="status">{{message.rstrip('.')|display_label}}</p>{% endfor %}
   {% block content %}{% endblock %}

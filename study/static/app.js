@@ -189,3 +189,36 @@ installButton?.addEventListener('click', async () => {
  await installPrompt.prompt(); installPrompt = null; installButton.hidden = true;
 });
 window.addEventListener('appinstalled', () => { installPrompt = null; if (installButton) installButton.hidden = true; });
+
+// Reuse the same navigation and theme control in the mobile modal.
+const mobileMenu = document.getElementById('mobile-menu');
+const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+if (mobileMenu && mobileMenuToggle) {
+ const mobileLayout = matchMedia('(max-width: 750px)');
+ const content = mobileMenu.querySelector('.mobile-menu-content');
+ const controls = [...document.querySelectorAll('header > nav, header > .theme-toggle')].map(node => {
+  const marker = document.createComment('desktop-control'); node.before(marker); return {node, marker};
+ });
+ function closeMobileMenu() { if (mobileMenu.open) mobileMenu.close(); }
+ function syncMobileMenu() {
+  closeMobileMenu();
+  controls.forEach(({node, marker}) => mobileLayout.matches ? content.append(node) : marker.after(node));
+ }
+ mobileMenuToggle.addEventListener('click', () => {
+  if (!mobileLayout.matches || mobileMenu.open) return;
+  mobileMenu.showModal(); document.documentElement.classList.add('mobile-menu-open');
+  mobileMenuToggle.setAttribute('aria-expanded', 'true');
+ });
+ document.getElementById('mobile-menu-close').addEventListener('click', closeMobileMenu);
+ mobileMenu.addEventListener('click', event => {
+  if (event.target !== mobileMenu) return;
+  const bounds = mobileMenu.getBoundingClientRect();
+  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeMobileMenu();
+ });
+ mobileMenu.addEventListener('close', () => {
+  document.documentElement.classList.remove('mobile-menu-open');
+  mobileMenuToggle.setAttribute('aria-expanded', 'false');
+ });
+ mobileMenu.addEventListener('click', event => { if (event.target.closest('nav a')) closeMobileMenu(); });
+ mobileLayout.addEventListener('change', syncMobileMenu); syncMobileMenu();
+}
