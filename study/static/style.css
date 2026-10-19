@@ -29,3 +29,11 @@ html.modal-open{overflow:hidden}.create-dialog{width:min(480px,calc(100% - 32px)
 
 /* Welcome spacing and settings heading alignment. */
 html[data-fixed-theme] main{max-width:1200px;padding:clamp(48px,12vh,120px) 24px 64px}.welcome{max-width:680px;margin:0 auto}.welcome h1{margin:0 0 28px;font-size:clamp(34px,5vw,48px);line-height:1.16}.welcome p{margin:0 0 24px;max-width:540px}.welcome iframe{max-width:100%}.settings-heading{align-items:center;margin:12px 0 32px}.settings-heading h1,.settings-heading button{margin:0}
+
+/* Keep week controls in the layout so narrow screens never overlap cards. */
+.board-toolbar{position:static;align-self:stretch;display:flex;justify-content:flex-start;flex-direction:row;margin:0;padding:0 32px 12px;min-width:0}
+.week-switch{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:0;max-width:100%;min-width:0}
+.week-switch a{min-height:44px;padding:8px}.week-switch time{padding:0 4px;text-align:center;font-size:14px}
+.planning-board:has(.card-board.is-editing),.planning-board:has(.board-create:not([hidden])){padding-top:0}
+@media(max-width:650px){.board-toolbar{padding:0 16px 12px}.week-switch{width:100%}.card-board{padding-top:12px}}
+@media(max-width:350px){.week-switch time{font-size:12px}}
