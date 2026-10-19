@@ -467,7 +467,7 @@ def test_rest_suppresses_only_todays_evening_preserving_work(db, monkeypatch):
     asyncio.run(run())
 
 
-def test_no_button_menu_after_cancel_unknown_text_or_evening(db):
+def test_no_button_menu_after_cancel_or_unknown_text_but_evening_has_actions(db):
     async def run():
         h = BotHarness(db)
         await h.text('/practice')
@@ -480,7 +480,8 @@ def test_no_button_menu_after_cancel_unknown_text_or_evening(db):
         assert '/help' in h.transport.messages[-1].text
         with db.session() as s:
             messages = list(due_messages(s, s.get(User, 1), datetime(2026, 10, 18, 18, tzinfo=ZoneInfo('UTC'))))
-            assert all(markup is None for _, _, markup in messages)
+            assert all(markup is None for key, _, markup in messages if ':weekly:' in key)
+            assert next(markup for key, _, markup in messages if ':daily:' in key) is not None
     asyncio.run(run())
 
 
@@ -502,3 +503,58 @@ def test_registration_write_access_sends_start_greeting(db):
         with db.session() as s:
             assert s.get(User, 1).bot_active
     asyncio.run(run())
+
+
+def test_reminder_records_slot_in_same_message_and_prevents_duplicates(db):
+    async def run():
+        from datetime import date, timedelta
+        with db.session.begin() as s:
+            slot = Slot(student_id=1, day=date.today()-timedelta(days=1), start='10:00', end='11:00',
+                        title='Повторение', subject_id=1, task_ids=[1, 3], series='reminder')
+            s.add(slot); s.flush(); slot_id = slot.id; day = slot.day
+        h = BotHarness(db)
+        await h.press(f'slot:{slot_id}')
+        assert h.draft()['message_id'] == h.message.message_id
+        assert h.draft()['day'] == day.isoformat()
+        assert h.draft()['all_ids'] == [1, 3]
+        await h.next_exceptions(); await h.next_exceptions()
+        with db.session() as s:
+            activity = s.scalar(select(Activity))
+            assert activity.day == day and activity.title == 'Повторение'
+            assert {r.task_id for r in s.scalars(select(Score))} == {1, 3}
+        await h.press(f'slot:{slot_id}')
+        with db.session() as s:
+            assert len(list(s.scalars(select(Activity)))) == 1
+            assert s.get(Draft, 1) is None
+    asyncio.run(run())
+
+
+def test_slot_without_subject_and_foreign_slot(db):
+    async def run():
+        from datetime import date
+        with db.session.begin() as s:
+            own = Slot(student_id=1, day=date.today(), start='10:00', end='11:00', title='Занятие', series='x')
+            other = Slot(student_id=3, day=date.today(), start='10:00', end='11:00', title='Чужое', series='x')
+            s.add_all([own, other]); s.flush(); own_id, other_id = own.id, other.id
+        h = BotHarness(db)
+        await h.press(f'slot:{other_id}')
+        with db.session() as s: assert s.get(Draft, 1) is None
+        await h.press(f'slot:{own_id}')
+        assert h.draft()['stage'] == 'subject'
+        await h.press('sub:1')
+        assert h.draft()['title'] == 'Занятие'
+    asyncio.run(run())
+
+
+def test_reminders_include_result_buttons(db):
+    from study.messages import bot_text
+    with db.session.begin() as s:
+        user = s.get(User, 1); user.evening = '10:00'; user.timezone = 'UTC'
+        s.add(Slot(student_id=1, day=datetime(2026,10,19).date(), start='10:10', end='11:00', title='Пробник', kind='exam', subject_id=1, series='x'))
+        s.flush()
+        messages = list(due_messages(s, user, datetime(2026,10,19,10,0,tzinfo=ZoneInfo('UTC'))))
+        assert len(messages) == 2
+        daily, slot = messages
+        assert daily[2].inline_keyboard[0][0].callback_data == 'daily:2026-10-19:practice'
+        button = slot[2].inline_keyboard[0][0]
+        assert button.callback_data.startswith('slot:') and button.text == bot_text('buttons.record_exam')

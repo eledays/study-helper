@@ -3,7 +3,7 @@ import logging
 import fcntl
 from pathlib import Path
 from datetime import datetime, date, timedelta, UTC
-from uuid import uuid4
+from uuid import uuid4, uuid5, NAMESPACE_URL
 from zoneinfo import ZoneInfo
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
@@ -188,11 +188,12 @@ def router(db, settings):
             if draft: s.delete(draft)
             await message.answer(bot_text('entry.cancelled'))
 
-    async def subject_menu(message, s, user, kind, day=None):
+    async def subject_menu(message, s, user, kind, day=None, entry=None):
         subjects = list(s.scalars(select(Subject).where(Subject.student_id == user.id)))
         if not subjects:
             await message.answer(bot_text('entry.no_subjects', base_url=settings.base_url.rstrip('/'))); return
         data = {'stage': 'subject', 'kind': kind, 'day': (day or local_day(user)).isoformat(), 'key': uuid4().hex}
+        data.update(entry or {})
         await render_step(message, data, bot_text('entry.subject'), keyboard([[(display_label(sub.name)[:60], f'sub:{sub.id}')] for sub in subjects]))
         draft_set(s, user.id, data)
 
@@ -332,10 +333,23 @@ def router(db, settings):
                     await subject_menu(call.message, s, user, arg); return
                 if command == 'slot':
                     slot = s.get(Slot, int(arg))
-                    if not slot or slot.student_id != user.id or not slot.subject_id:
+                    if not slot or slot.student_id != user.id or slot.kind == 'rest' or slot.day > local_day(user):
                         raise UserMessageError(bot_text('errors.slot_not_found'))
-                    data = {'stage': 'type', 'kind': 'exam' if slot.kind == 'exam' else 'practice',
-                            'subject': slot.subject_id, 'day': slot.day.isoformat(), 'key': uuid4().hex, 'title': slot.title}
+                    entry_key = uuid5(NAMESPACE_URL, f'study-slot:{user.id}:{slot.id}').hex
+                    entry = {'key': entry_key, 'title': slot.title,
+                             'message_id': call.message.message_id, 'chat_id': call.message.chat.id}
+                    if s.scalar(select(Activity.id).where(Activity.student_id == user.id, Activity.request_key == entry_key)):
+                        await render_step(call.message, entry, bot_text('results.practice_saved'))
+                        return
+                    kind = 'exam' if slot.kind == 'exam' else 'practice'
+                    if not slot.subject_id:
+                        await subject_menu(call.message, s, user, kind, slot.day, entry)
+                        return
+                    subject = s.get(Subject, slot.subject_id)
+                    if not subject or subject.student_id != user.id:
+                        raise UserMessageError(bot_text('errors.subject_not_found'))
+                    data = {'stage': 'type', 'kind': kind, 'subject': slot.subject_id,
+                            'day': slot.day.isoformat(), **entry}
                     if slot.kind == 'exam':
                         data['selected'] = [t.id for t in s.scalars(select(Task).where(Task.subject_id == slot.subject_id).order_by(Task.id))]
                         if not data['selected']: raise UserMessageError(bot_text('errors.add_tasks'))
@@ -355,7 +369,11 @@ def router(db, settings):
                 if command == 'daily':
                     day_text, _, arg = arg.partition(':')
                     day = date.fromisoformat(day_text)
-                    if day > local_day(user) or arg != 'rest': return
+                    if day > local_day(user): return
+                    if arg in ('practice', 'exam'):
+                        await subject_menu(call.message, s, user, arg, day)
+                        return
+                    if arg != 'rest': return
                     await mark_day(call.message, s, user, day)
                     return
                 if command == 'result-feel':
@@ -591,14 +609,17 @@ def due_messages(s, user, now):
         texts = bot_texts('notifications.daily_variants')
         text = bot_text('notifications.rest_day') if rested else texts[day.toordinal() % len(texts)]
         if not s.get(Delivery, f'{user.id}:daily:{day}'):
-            yield f'{user.id}:daily:{day}', text, None
+            yield f'{user.id}:daily:{day}', text, keyboard([
+                [(bot_text('buttons.record_practice'), f'daily:{day}:practice'), (bot_text('buttons.record_exam'), f'daily:{day}:exam')],
+                [(bot_text(f'buttons.rest_{user.gender}'), f'daily:{day}:rest')]])
         if day.weekday() == 6:
             yield f'{user.id}:weekly:{day}', weekly_text(s, user.id, day), None
     if user.reminders:
         for slot in slots:
             start = datetime.combine(day, datetime.strptime(slot.start, '%H:%M').time(), ZoneInfo(user.timezone))
             if slot.kind != 'rest' and start-timedelta(minutes=15) <= local < start:
-                yield f'{user.id}:slot:{slot.id}', bot_text('notifications.slot', title=slot.title), None
+                yield f'{user.id}:slot:{slot.id}', bot_text('notifications.slot', title=slot.title), keyboard([
+                    [(bot_text('buttons.record_exam' if slot.kind == 'exam' else 'buttons.record_practice'), f'slot:{slot.id}')]])
 
 
 async def deliver_due(bot, db, now):
