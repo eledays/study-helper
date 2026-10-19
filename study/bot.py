@@ -611,7 +611,7 @@ def due_messages(s, user, now):
         if not s.get(Delivery, f'{user.id}:daily:{day}'):
             yield f'{user.id}:daily:{day}', text, keyboard([
                 [(bot_text('buttons.record_practice'), f'daily:{day}:practice'), (bot_text('buttons.record_exam'), f'daily:{day}:exam')],
-                [(bot_text(f'buttons.rest_{user.gender}'), f'daily:{day}:rest')]])
+                [(bot_text('buttons.rest_female' if user.gender == 'female' else 'buttons.rest_male' if user.gender == 'male' else 'buttons.rest_neutral'), f'daily:{day}:rest')]])
         if day.weekday() == 6:
             yield f'{user.id}:weekly:{day}', weekly_text(s, user.id, day), None
     if user.reminders:

@@ -174,3 +174,15 @@ def test_avatar_fallback_is_authenticated_private_and_does_not_expose_token(db, 
     def fail(*args): raise TimeoutError()
     monkeypatch.setattr('study.web.fetch_avatar', fail)
     assert client.get('/profile/avatar').status_code == 503
+
+
+def test_avatar_proxy_failure_returns_unavailable_without_leaking_details(db, monkeypatch, caplog):
+    from python_socks import ProxyError
+    app = create_app(Settings(_env_file=None, secret_key='avatar-proxy-secret-long-enough',
+                             database_url=str(db.engine.url), bot_token='123456:test-secret'))
+    client = app.test_client()
+    with client.session_transaction() as state: state['user_id'] = 1
+    def fail(*args): raise ProxyError('sensitive-proxy-details')
+    monkeypatch.setattr('study.web.fetch_avatar', fail)
+    assert client.get('/profile/avatar').status_code == 503
+    assert 'sensitive-proxy-details' not in caplog.text

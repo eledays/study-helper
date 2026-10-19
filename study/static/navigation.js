@@ -1,7 +1,8 @@
 // A new launch or reload opens the current week; links keep the selected week.
-function resetPlanningWeek() {
+function resetPlanningWeek(refresh = false) {
  const url = new URL(location.href);
- if (!['/goals', '/schedule', '/plan', '/editing'].includes(url.pathname) || !url.searchParams.has('week')) return;
+ if (!['/goals', '/schedule', '/plan', '/editing'].includes(url.pathname)) return;
+ if (!url.searchParams.has('week')) { if (refresh) location.reload(); return; }
  url.searchParams.delete('week');
  url.searchParams.delete('edit');
  location.replace(url.href);
@@ -11,6 +12,6 @@ const standalone = () => matchMedia('(display-mode: standalone)').matches || nav
 let wasHidden = document.hidden;
 document.addEventListener('visibilitychange', () => {
  if (document.hidden) wasHidden = true;
- else if (wasHidden && standalone()) { wasHidden = false; resetPlanningWeek(); }
+ else if (wasHidden && standalone()) { wasHidden = false; resetPlanningWeek(true); }
 });
-window.addEventListener('pageshow', event => { if (event.persisted && standalone()) resetPlanningWeek(); });
+window.addEventListener('pageshow', event => { if (event.persisted && standalone()) resetPlanningWeek(true); });

@@ -12,6 +12,8 @@ from sqlalchemy import select, delete, func, text
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError
 from .avatars import fetch_avatar
 from aiogram.exceptions import TelegramAPIError
+from aiohttp import ClientError
+from python_socks import ProxyError
 from .presentation import display_label, task_order_key
 from .groups import ensure_groups, group_tasks, save_group, attach_standard
 from .catalog import CATALOG, add_subject, ensure_defaults
@@ -142,7 +144,7 @@ def create_app(settings=None):
             abort(404)
         try:
             result = fetch_avatar(settings, g.user.telegram_id)
-        except (TelegramAPIError, OSError, TimeoutError, ValueError):
+        except (TelegramAPIError, ClientError, ProxyError, OSError, TimeoutError, ValueError):
             # Do not log Telegram exceptions: file URLs can contain the bot token.
             app.logger.warning('Avatar lookup unavailable user=%s', g.user.id)
             return '', 503
