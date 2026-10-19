@@ -53,7 +53,7 @@ const {chromium}=require('playwright');
      const menuButton=page.getByRole('button',{name:'Открыть меню',exact:true});
      if(!await menuButton.isVisible()||await page.locator('header > nav').count())throw Error('Mobile navigation not collapsed');
      const profile=await page.locator('.profile-name').boundingBox(),student=await page.locator('.profile-student').boundingBox();
-     if(profile.height!==36||student.height!==profile.height)throw Error('Unequal profile control heights');
+     if(profile.height!==32||student.height!==profile.height)throw Error('Unequal profile control heights');
     }else{
      if(await page.locator('#mobile-menu-toggle').isVisible()||!await page.locator('header > nav').isVisible()||!await page.locator('header > .theme-toggle').isVisible())throw Error('Desktop navigation changed');
     }
@@ -72,7 +72,10 @@ const {chromium}=require('playwright');
      const label=await page.locator('.week-switch time').evaluate(node=>node.scrollWidth>node.clientWidth);
      if(label)throw Error('Week label overflows');
      if(width<=750){
-      for(const element of await page.locator('.week-switch > *').all())if((await element.boundingBox()).height!==36)throw Error('Week control is not compact');
+      if((await page.locator('.week-switch time').boundingBox()).height!==30)throw Error('Week control is not compact');
+      if(await page.locator('.week-switch a:visible').count())throw Error('Mobile week arrows remain visible');
+      const header=await page.locator('header').boundingBox();
+      if(bounds.y<header.y||bounds.y+bounds.height>header.y+header.height)throw Error('Week not in header');
       const background=await page.locator('.week-switch').evaluate(node=>getComputedStyle(node).backgroundColor);
       if(background!=='rgba(0, 0, 0, 0)')throw Error('Week control elements not separated');
      }
@@ -82,9 +85,34 @@ const {chromium}=require('playwright');
   }
   await page.setViewportSize({width:390,height:844});
   await page.goto('http://127.0.0.1:18081/goals');
+  // Selecting another plan must work before and after navigating weeks.
+  const selector=page.locator('#student-switch');
+  await selector.selectOption('2');
+  await page.waitForURL(url=>url.searchParams.get('student')==='2');
+  if(await selector.inputValue()!=='2')throw Error('Pupil plan selection lost');
+  const cdp=await context.newCDPSession(page);
+  async function swipe(x1,y1,x2,y2){
+   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:x1,y:y1}]});
+   for(let n=1;n<=6;n++)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x1+(x2-x1)*n/6,y:y1+(y2-y1)*n/6}]});
+   await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  }
+  const currentWeek=await page.locator('.week-switch time').getAttribute('datetime');
+  await swipe(270,300,90,305);
+  await page.waitForURL(url=>url.searchParams.has('week'));
+  const nextWeek=await page.locator('.week-switch time').getAttribute('datetime');
+  if(nextWeek<=currentWeek||await selector.inputValue()!=='2')throw Error('Swipe lost student or failed to advance');
+  await swipe(90,300,270,305);
+  await page.waitForFunction(week=>document.querySelector('.week-switch time').dateTime===week,currentWeek);
+  const beforeVertical=page.url();
+  await swipe(190,400,195,250);
+  if(page.url()!==beforeVertical)throw Error('Vertical scroll switched week');
+  await selector.selectOption('1');
+  await page.waitForURL(url=>url.searchParams.get('student')==='1');
   const menuButton=page.getByRole('button',{name:'Открыть меню',exact:true});
   await menuButton.click();
   if(!await page.locator('#mobile-menu').evaluate(node=>node.open)||await menuButton.getAttribute('aria-expanded')!=='true')throw Error('Menu did not open');
+  const menuBounds=await page.locator('#mobile-menu').boundingBox();
+  if(menuBounds.width>250||menuBounds.height>450||menuBounds.x<12||menuBounds.y<40)throw Error('Menu is not a compact floating block');
   const oldTheme=await page.locator('html').getAttribute('data-theme');
   await page.locator('#mobile-menu #theme-toggle').click();
   if(await page.locator('html').getAttribute('data-theme')===oldTheme)throw Error('Theme toggle failed in menu');
@@ -99,6 +127,11 @@ const {chromium}=require('playwright');
   await menuButton.click();
   await page.locator('#mobile-menu').getByRole('link',{name:'Расписание',exact:true}).click();
   await page.waitForURL('**/schedule?**');
+  const scheduleWeek=await page.locator('.week-switch time').getAttribute('datetime');
+  await swipe(270,240,90,245);
+  await page.waitForFunction(week=>document.querySelector('.week-switch time').dateTime>week,scheduleWeek);
+  await swipe(90,240,270,245);
+  await page.waitForFunction(week=>document.querySelector('.week-switch time').dateTime===week,scheduleWeek);
   await page.screenshot({path:'/tmp/study-mobile-schedule.png'});
   await menuButton.click();
   await page.setViewportSize({width:1280,height:844});
