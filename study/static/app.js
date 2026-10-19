@@ -196,12 +196,19 @@ const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
 if (mobileMenu && mobileMenuToggle) {
  const mobileLayout = matchMedia('(max-width: 750px)');
  const content = mobileMenu.querySelector('.mobile-menu-content');
+ const weekControl = document.querySelector('.week-switch');
+ const weekMarker = document.createComment('desktop-week');
+ if (weekControl) weekControl.before(weekMarker);
  const controls = [...document.querySelectorAll('header > nav, header > .theme-toggle')].map(node => {
   const marker = document.createComment('desktop-control'); node.before(marker); return {node, marker};
  });
  function closeMobileMenu() { if (mobileMenu.open) mobileMenu.close(); }
  function syncMobileMenu() {
   closeMobileMenu();
+  if (weekControl) {
+   if (mobileLayout.matches) mobileMenuToggle.after(weekControl);
+   else weekMarker.after(weekControl);
+  }
   controls.forEach(({node, marker}) => mobileLayout.matches ? content.append(node) : marker.after(node));
  }
  mobileMenuToggle.addEventListener('click', () => {
@@ -221,4 +228,46 @@ if (mobileMenu && mobileMenuToggle) {
  });
  mobileMenu.addEventListener('click', event => { if (event.target.closest('nav a')) closeMobileMenu(); });
  mobileLayout.addEventListener('change', syncMobileMenu); syncMobileMenu();
+}
+
+// Switch weeks on deliberate horizontal gestures, without intercepting forms or scrolling.
+const planningBoard = document.querySelector('.planning-board');
+if (planningBoard) {
+ const mobileWeek = matchMedia('(max-width: 750px)');
+ const weekControl = document.querySelector('.week-switch');
+ function moveWeek(next) {
+  if (!mobileWeek.matches || document.querySelector('dialog[open]')) return;
+  const link = weekControl?.querySelector(next ? 'a:last-child' : 'a:first-child');
+  if (link) location.assign(link.href);
+ }
+ let gesture;
+ const excluded = 'a,button,input,select,textarea,form,dialog,.table-scroll';
+ function startWeekSwipe(event) {
+  gesture = null;
+  if (!mobileWeek.matches || event.touches.length !== 1 || event.target.closest(excluded)) return;
+  const touch = event.touches[0];
+  // Leave the screen edges available for system back/forward gestures.
+  if (touch.clientX < 24 || touch.clientX > innerWidth - 24) return;
+  gesture = {x:touch.clientX, y:touch.clientY, time:performance.now()};
+ }
+ function finishWeekSwipe(event) {
+  const start = gesture; gesture = null;
+  if (!start || event.touches.length || event.changedTouches.length !== 1) return;
+  const touch = event.changedTouches[0], dx = touch.clientX-start.x, dy = touch.clientY-start.y;
+  if (Math.abs(dx) >= 56 && Math.abs(dx) > Math.abs(dy)*1.5 && performance.now()-start.time < 1000) moveWeek(dx < 0);
+ }
+ [planningBoard, weekControl].filter(Boolean).forEach(node => {
+  node.addEventListener('touchstart', startWeekSwipe, {passive:true});
+  node.addEventListener('touchend', finishWeekSwipe, {passive:true});
+  node.addEventListener('touchcancel', () => {gesture=null}, {passive:true});
+ });
+ function syncWeekKeyboard() {
+  if (mobileWeek.matches) planningBoard.tabIndex = 0;
+  else planningBoard.removeAttribute('tabindex');
+ }
+ mobileWeek.addEventListener('change', syncWeekKeyboard); syncWeekKeyboard();
+ planningBoard.addEventListener('keydown', event => {
+  if (event.target !== planningBoard || !['ArrowLeft','ArrowRight'].includes(event.key) || !mobileWeek.matches) return;
+  event.preventDefault(); moveWeek(event.key === 'ArrowRight');
+ });
 }

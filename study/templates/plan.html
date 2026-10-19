@@ -5,7 +5,7 @@
   <div class="board-toolbar">
     <div class="week-switch" aria-label="Выбор недели">
       <a aria-label="Предыдущая неделя" href="{{url_for('page',section=section,student=g.student.id,week=week-timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_left</span></a>
-      <time datetime="{{week}}">Неделя: {{week.strftime('%d.%m')}} - {{(week+timedelta(days=6)).strftime('%d.%m')}}</time>
+      <time datetime="{{week}}" title="Неделя {{week.strftime('%d.%m.%Y')}} — {{(week+timedelta(days=6)).strftime('%d.%m.%Y')}}"><span class="week-prefix">Неделя: </span><span class="week-range">{{week.strftime('%d.%m')}}–{{(week+timedelta(days=6)).strftime('%d.%m')}}</span></time>
       <a aria-label="Следующая неделя" href="{{url_for('page',section=section,student=g.student.id,week=week+timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></a>
     </div>
 
