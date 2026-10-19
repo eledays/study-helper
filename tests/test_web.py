@@ -128,9 +128,9 @@ def test_signed_telegram_avatar_is_stored_updated_and_optional(db):
     assert client.get('/auth/telegram',query_string=data).status_code==403
     with db.session() as s:assert s.get(UserAvatar,1).photo_url==photo
     assert client.get('/auth/telegram',query_string=signed('javascript:alert(1)')).status_code==302
-    assert 'class="profile-avatar"' not in client.get('/goals').data.decode()
+    assert 'src="/profile/avatar"' in client.get('/goals').data.decode()
     assert client.get('/auth/telegram',query_string=signed()).status_code==302
-    assert 'class="profile-avatar"' not in client.get('/goals').data.decode()
+    assert 'src="/profile/avatar"' in client.get('/goals').data.decode()
 
 
 def test_teacher_role_controls_settings_and_invites(client, db):
@@ -150,3 +150,27 @@ def test_login_has_fixed_dark_theme(client):
     assert 'data-theme="dark" data-fixed-theme="dark"' in page
     assert 'id="theme-toggle"' not in page
     assert 'id="theme-toggle"' in client.get('/settings').text
+
+
+def test_avatar_fallback_is_authenticated_private_and_does_not_expose_token(db, monkeypatch):
+    app = create_app(Settings(_env_file=None, secret_key='avatar-fallback-secret-long-enough',
+                             database_url=str(db.engine.url), bot_token='123456:test-secret'))
+    client = app.test_client()
+    assert client.get('/profile/avatar').status_code == 302
+    with client.session_transaction() as state: state['user_id'] = 1
+    calls = []
+    def photo(settings, telegram_id):
+        calls.append(telegram_id)
+        return b'\xff\xd8\xffphoto', 'image/jpeg'
+    monkeypatch.setattr('study.web.fetch_avatar', photo)
+    response = client.get('/profile/avatar?student=3')
+    assert response.status_code == 403
+    response = client.get('/profile/avatar')
+    assert response.status_code == 200 and response.content_type == 'image/jpeg'
+    assert response.headers['Cache-Control'] == 'no-store' and calls == [100]
+    assert b'test-secret' not in response.data
+    monkeypatch.setattr('study.web.fetch_avatar', lambda *args: None)
+    assert client.get('/profile/avatar').status_code == 404
+    def fail(*args): raise TimeoutError()
+    monkeypatch.setattr('study.web.fetch_avatar', fail)
+    assert client.get('/profile/avatar').status_code == 503

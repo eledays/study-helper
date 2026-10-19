@@ -10,6 +10,8 @@ from uuid import uuid4
 from flask import Flask, request, session, g, redirect, url_for, render_template, abort, flash, jsonify, Response
 from sqlalchemy import select, delete, func, text
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError
+from .avatars import fetch_avatar
+from aiogram.exceptions import TelegramAPIError
 from .presentation import display_label, task_order_key
 from .groups import ensure_groups, group_tasks, save_group, attach_standard
 from .catalog import CATALOG, add_subject, ensure_defaults
@@ -132,7 +134,23 @@ def create_app(settings=None):
     def common():
         pupils = list(g.db.scalars(select(User).where(User.teacher_id == g.user.id))) if g.user and g.user.is_teacher else []
         avatar = g.db.get(UserAvatar, g.user.id) if g.user else None
-        return {'avatar_url': avatar.photo_url if avatar else '', 'csrf': session['csrf'], 'pupils': pupils, 'bot_username': settings.bot_username, 'base_url': settings.base_url.rstrip('/'), 'debug_login_enabled': settings.debug}
+        return {'avatar_url': avatar.photo_url if avatar else '', 'avatar_fallback_url': url_for('profile_avatar') if settings.bot_token else '', 'csrf': session['csrf'], 'pupils': pupils, 'bot_username': settings.bot_username, 'base_url': settings.base_url.rstrip('/'), 'debug_login_enabled': settings.debug}
+
+    @app.get('/profile/avatar')
+    def profile_avatar():
+        if not settings.bot_token:
+            abort(404)
+        try:
+            result = fetch_avatar(settings, g.user.telegram_id)
+        except (TelegramAPIError, OSError, TimeoutError, ValueError):
+            # Do not log Telegram exceptions: file URLs can contain the bot token.
+            app.logger.warning('Avatar lookup unavailable user=%s', g.user.id)
+            return '', 503
+        if not result:
+            app.logger.info('Telegram profile photo unavailable user=%s', g.user.id)
+            abort(404)
+        data, mime = result
+        return Response(data, mimetype=mime)
 
     @app.get('/health')
     def health():

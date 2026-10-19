@@ -28,7 +28,7 @@
   <button type="button" class="quiet theme-toggle" id="theme-toggle" aria-label="Переключить тему">Тема</button>
   {% if g.user %}
   <div class="profile-cards" aria-label="Профиль">
-    <a class="profile-card profile-name" title="{{g.user.name}}" href="{{url_for('page',section='settings')}}">{% if avatar_url %}<img class="profile-avatar" src="{{avatar_url}}" alt="" width="28" height="28" referrerpolicy="no-referrer">{% endif %}<span>{{g.user.name}}</span></a>
+    <a class="profile-card profile-name" title="{{g.user.name}}" href="{{url_for('page',section='settings')}}">{% if avatar_url or avatar_fallback_url %}<img class="profile-avatar" src="{{avatar_url or avatar_fallback_url}}" data-fallback="{{avatar_fallback_url if avatar_url else ''}}" alt="" width="28" height="28" referrerpolicy="no-referrer">{% endif %}<span>{{g.user.name}}</span></a>
     {% if pupils or g.student.id != g.user.id %}
     <div class="profile-card profile-student">
       <select aria-label="Выбранный ученик" id="student-switch">
