@@ -53,7 +53,7 @@ const {chromium}=require('playwright');
      const menuButton=page.getByRole('button',{name:'Открыть меню',exact:true});
      if(!await menuButton.isVisible()||await page.locator('header > nav').count())throw Error('Mobile navigation not collapsed');
      const profile=await page.locator('.profile-name').boundingBox(),student=await page.locator('.profile-student').boundingBox();
-     if(profile.height!==32||student.height!==profile.height)throw Error('Unequal profile control heights');
+     if(profile.height!==36||student.height!==profile.height)throw Error('Unequal profile control heights');
     }else{
      if(await page.locator('#mobile-menu-toggle').isVisible()||!await page.locator('header > nav').isVisible()||!await page.locator('header > .theme-toggle').isVisible())throw Error('Desktop navigation changed');
     }
@@ -74,6 +74,11 @@ const {chromium}=require('playwright');
      if(width<=750){
       if((await page.locator('.week-switch time').boundingBox()).height!==30)throw Error('Week control is not compact');
       if(await page.locator('.week-switch a:visible').count())throw Error('Mobile week arrows remain visible');
+      const menuControl=await page.locator('#mobile-menu-toggle').boundingBox();
+      const profileGroup=await page.locator('.profile-cards').boundingBox();
+      if(menuControl.height!==36)throw Error('Menu control size changed');
+      const leftGap=bounds.x-(menuControl.x+menuControl.width),rightGap=profileGroup.x-(bounds.x+bounds.width);
+      if(Math.abs(leftGap-rightGap)>1)throw Error('Week not centered between controls');
       const header=await page.locator('header').boundingBox();
       if(bounds.y<header.y||bounds.y+bounds.height>header.y+header.height)throw Error('Week not in header');
       const background=await page.locator('.week-switch').evaluate(node=>getComputedStyle(node).backgroundColor);
