@@ -39,13 +39,15 @@ html[data-fixed-theme] main{max-width:1200px;padding:clamp(48px,12vh,120px) 24px
 @media(max-width:350px){.week-switch time{font-size:12px}}
 
 /* Mobile sections stay in the header; personal controls live in settings. */
-.profile-initial,.mobile-plan-label,.mobile-settings-controls{display:none}
+.profile-initial,.mobile-plan-label,.mobile-settings-controls,.section-icon{display:none}
 @media(max-width:750px){
  header{display:block;padding:12px 16px;min-width:0}
  header > .theme-toggle,header > .profile-cards{display:none}
- header nav{display:flex;flex-wrap:nowrap;width:100%;min-width:0;margin:0;gap:4px;overflow-x:auto;scrollbar-width:none;justify-content:flex-start}
+ header nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));width:100%;min-width:0;margin:0;gap:6px;overflow:visible}
  header nav::-webkit-scrollbar{display:none}
- header nav a{flex:0 0 auto;white-space:nowrap;font-size:13px;padding:9px 11px}
+ header nav a{display:grid;place-items:center;min-width:0;min-height:44px;padding:8px;border-radius:10px}
+ header nav .section-label{display:none}
+ header nav .section-icon{display:block;width:26px;height:26px;overflow:hidden;font-size:26px}
  .mobile-settings-controls{display:block}
  .mobile-settings-controls.card{padding:20px;background:var(--surface);border-radius:14px}
  #mobile-settings-controls{display:flex;flex-direction:column;gap:16px}
@@ -58,11 +60,15 @@ html[data-fixed-theme] main{max-width:1200px;padding:clamp(48px,12vh,120px) 24px
  #mobile-settings-controls .mobile-plan-label{display:block;margin:0 0 6px;font-size:13px;color:var(--muted)}
  #mobile-settings-controls .profile-student select{width:100%;max-width:none;margin:0;padding:10px 12px;font-size:16px;background:var(--field)}
  #mobile-settings-controls .theme-toggle{order:1;width:100%;padding:10px 12px;font-size:14px;background:var(--field);text-align:left}
- .board-toolbar{padding:0 16px 12px;justify-content:center}
- .week-switch{display:block;width:auto;flex:none;margin:0;background:transparent;padding:0;touch-action:pan-y pinch-zoom}
+ .board-toolbar{display:contents}
+ .week-switch{position:fixed;left:16px;bottom:max(20px,env(safe-area-inset-bottom));z-index:10;display:block;width:auto;max-width:calc(100% - 140px);margin:0;background:transparent;padding:0;touch-action:pan-y pinch-zoom}
  .week-switch a{display:none}
- .week-switch time{display:flex;align-items:center;justify-content:center;height:30px;min-height:30px;padding:0 8px;border-radius:12px;background:var(--surface);font-size:11px;line-height:1;white-space:nowrap}
+ .week-switch time{display:flex;align-items:center;justify-content:center;height:50px;min-height:50px;padding:0 14px;border-radius:14px;background:var(--surface);box-shadow:0 4px 18px #0002;font-size:15px;line-height:1;white-space:nowrap}
  .week-prefix{display:none}
+ .board-actions{right:16px;bottom:max(20px,env(safe-area-inset-bottom));gap:10px}
+ .board-actions .round-action{width:50px;height:50px}
+ .board-actions #board-edit{width:38px;height:38px}
+ .card-board{padding-bottom:100px}
  .schedule-board{width:calc(100% - 32px);max-width:none}
  .planning-board{touch-action:pan-y pinch-zoom}
 }

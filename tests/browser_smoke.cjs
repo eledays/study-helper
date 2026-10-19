@@ -51,6 +51,8 @@ const {chromium}=require('playwright');
     await page.goto('http://127.0.0.1:18081'+route);
     if(!await page.locator('header > nav').isVisible())throw Error('Sections not in header');
     if(width<=750){
+     if(await page.locator('header nav .section-icon:visible').count()!==5||await page.locator('header nav .section-label:visible').count())throw Error('Mobile section icons missing');
+     if(await page.locator('header nav').evaluate(node=>node.scrollWidth>node.clientWidth))throw Error('Section icons do not fit');
      if(await page.locator('header > .theme-toggle').isVisible()||await page.locator('header > .profile-cards').isVisible())throw Error('Personal controls remain in mobile header');
      if(route==='/settings'&&(!await page.locator('#mobile-settings-controls #theme-toggle').isVisible()||!await page.locator('#mobile-settings-controls #student-switch').isVisible()))throw Error('Mobile settings controls missing');
     }else{
@@ -67,13 +69,14 @@ const {chromium}=require('playwright');
      const bounds=await page.locator('.week-switch').boundingBox();
      if(bounds.x<0||bounds.x+bounds.width>width)throw Error('Week selector outside viewport');
      const cards=await page.locator('.card-board').boundingBox();
-     if(cards.y<bounds.y+bounds.height)throw Error('Week selector overlaps cards');
+     if(width>750&&cards.y<bounds.y+bounds.height)throw Error('Week selector overlaps cards');
      const label=await page.locator('.week-switch time').evaluate(node=>node.scrollWidth>node.clientWidth);
      if(label)throw Error('Week label overflows');
      if(width<=750){
-      if((await page.locator('.week-switch time').boundingBox()).height!==30)throw Error('Week control is not compact');
+      if((await page.locator('.week-switch time').boundingBox()).height!==50)throw Error('Week control is not prominent');
       if(await page.locator('.week-switch a:visible').count())throw Error('Mobile week arrows remain visible');
-      if(Math.abs(bounds.x+bounds.width/2-width/2)>1)throw Error('Week not centered');
+      const actions=await page.locator('.board-actions').boundingBox();
+      if(bounds.x!==16||bounds.x+bounds.width>=actions.x-8||Math.abs(bounds.y+bounds.height/2-actions.y-actions.height/2)>1)throw Error('Week and action controls are not aligned');
       const background=await page.locator('.week-switch').evaluate(node=>getComputedStyle(node).backgroundColor);
       if(background!=='rgba(0, 0, 0, 0)')throw Error('Week control elements not separated');
      }

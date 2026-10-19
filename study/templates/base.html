@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="/static/icon-180.png">
   <title>study-bot</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="{{url_for('static',filename='favicon.svg')}}">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&amp;icon_names=add,check,chevron_left,chevron_right,close,edit&amp;display=block">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&amp;icon_names=add,bar_chart,calendar_month,check,chevron_left,chevron_right,close,edit,edit_note,flag,settings&amp;display=block">
   <link rel="stylesheet" href="{{url_for('static',filename='style.css')}}">
   <script defer src="{{url_for('static',filename='app.js')}}"></script>
 </head>
@@ -20,8 +20,8 @@
 {% if request.endpoint != 'login' %}<header>
   {% if g.user %}
   <nav aria-label="Разделы">
-    {% for key,label in [('goals','Цели'),('schedule','Расписание'),('analytics','Аналитика'),('editing','Редактирование'),('settings','Настройки')] %}
-    <a class="{{'active' if section == key}}" {% if section == key %}aria-current="page"{% endif %} href="{{url_for('page',section=key,student=g.student.id,week=week if week is defined else none)}}">{{label}}</a>
+    {% for key,label,icon in [('goals','Цели','flag'),('schedule','Расписание','calendar_month'),('analytics','Аналитика','bar_chart'),('editing','Редактирование','edit_note'),('settings','Настройки','settings')] %}
+    <a class="{{'active' if section == key}}" aria-label="{{label}}" title="{{label}}" {% if section == key %}aria-current="page"{% endif %} href="{{url_for('page',section=key,student=g.student.id,week=week if week is defined else none)}}"><span class="section-icon material-symbols-outlined" aria-hidden="true">{{icon}}</span><span class="section-label">{{label}}</span></a>
     {% endfor %}
   </nav>
   {% endif %}
