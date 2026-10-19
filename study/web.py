@@ -67,7 +67,7 @@ def create_app(settings=None):
             abort(404)
         if request.method == 'POST' and not hmac.compare_digest(request.form.get('csrf', '').encode(), session['csrf'].encode()):
             abort(400, 'Обновите страницу и повторите действие')
-        if request.endpoint not in ('login', 'auth', 'debug_login', 'static', 'health') and not g.user:
+        if request.endpoint not in ('login', 'auth', 'debug_login', 'static', 'health', 'service_worker') and not g.user:
             return redirect(url_for('login'))
         if g.user:
             student_id = str(g.user.id) if request.endpoint in ('export_account', 'remove_account') else request.values.get('student', str(g.user.id))
@@ -147,6 +147,10 @@ def create_app(settings=None):
     @app.get('/live')
     def live():
         return {'status': 'ok'}
+
+    @app.get('/sw.js')
+    def service_worker():
+        return app.send_static_file('sw.js')
 
     @app.get('/login')
     def login():

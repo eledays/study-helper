@@ -174,3 +174,15 @@ document.querySelectorAll('[data-exam-edit]').forEach(form=>{
  const sync=()=>{const manual=mode.value==='manual';label.hidden=!manual;input.disabled=!manual};
  mode.addEventListener('change',sync);sync();
 });
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', {updateViaCache:'none'}).catch(() => {});
+let installPrompt;
+const installButton = document.getElementById('install-app');
+window.addEventListener('beforeinstallprompt', event => {
+ event.preventDefault(); installPrompt = event; if (installButton) installButton.hidden = false;
+});
+installButton?.addEventListener('click', async () => {
+ if (!installPrompt) return;
+ await installPrompt.prompt(); installPrompt = null; installButton.hidden = true;
+});
+window.addEventListener('appinstalled', () => { installPrompt = null; if (installButton) installButton.hidden = true; });

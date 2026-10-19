@@ -2,9 +2,14 @@
 <html lang="ru"{% if request.endpoint == 'login' %} data-theme="dark" data-fixed-theme="dark"{% endif %}>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <script nonce="{{g.nonce}}">if(!document.documentElement.dataset.fixedTheme)try{const t=localStorage.getItem("theme");document.documentElement.dataset.theme=t||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
   <script src="{{url_for('static',filename='navigation.js')}}"></script>
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="theme-color" content="#83c650">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="study-bot">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
   <title>study-bot</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="{{url_for('static',filename='favicon.svg')}}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&amp;icon_names=add,check,chevron_left,chevron_right,close,edit&amp;display=block">
