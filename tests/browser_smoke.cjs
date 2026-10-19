@@ -49,13 +49,12 @@ const {chromium}=require('playwright');
    await page.setViewportSize({width,height:844});
    for(const route of ['/goals','/schedule','/analytics','/editing','/settings']){
     await page.goto('http://127.0.0.1:18081'+route);
+    if(!await page.locator('header > nav').isVisible())throw Error('Sections not in header');
     if(width<=750){
-     const menuButton=page.getByRole('button',{name:'Открыть меню',exact:true});
-     if(!await menuButton.isVisible()||await page.locator('header > nav').count())throw Error('Mobile navigation not collapsed');
-     const profile=await page.locator('.profile-name').boundingBox(),student=await page.locator('.profile-student').boundingBox();
-     if(profile.height!==36||student.height!==profile.height)throw Error('Unequal profile control heights');
+     if(await page.locator('header > .theme-toggle').isVisible()||await page.locator('header > .profile-cards').isVisible())throw Error('Personal controls remain in mobile header');
+     if(route==='/settings'&&(!await page.locator('#mobile-settings-controls #theme-toggle').isVisible()||!await page.locator('#mobile-settings-controls #student-switch').isVisible()))throw Error('Mobile settings controls missing');
     }else{
-     if(await page.locator('#mobile-menu-toggle').isVisible()||!await page.locator('header > nav').isVisible()||!await page.locator('header > .theme-toggle').isVisible())throw Error('Desktop navigation changed');
+     if(!await page.locator('header > .theme-toggle').isVisible()||!await page.locator('header > .profile-cards').isVisible())throw Error('Desktop controls changed');
     }
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
     if(overflow){
@@ -74,13 +73,7 @@ const {chromium}=require('playwright');
      if(width<=750){
       if((await page.locator('.week-switch time').boundingBox()).height!==30)throw Error('Week control is not compact');
       if(await page.locator('.week-switch a:visible').count())throw Error('Mobile week arrows remain visible');
-      const menuControl=await page.locator('#mobile-menu-toggle').boundingBox();
-      const profileGroup=await page.locator('.profile-cards').boundingBox();
-      if(menuControl.height!==36)throw Error('Menu control size changed');
-      const leftGap=bounds.x-(menuControl.x+menuControl.width),rightGap=profileGroup.x-(bounds.x+bounds.width);
-      if(Math.abs(leftGap-rightGap)>1)throw Error('Week not centered between controls');
-      const header=await page.locator('header').boundingBox();
-      if(bounds.y<header.y||bounds.y+bounds.height>header.y+header.height)throw Error('Week not in header');
+      if(Math.abs(bounds.x+bounds.width/2-width/2)>1)throw Error('Week not centered');
       const background=await page.locator('.week-switch').evaluate(node=>getComputedStyle(node).backgroundColor);
       if(background!=='rgba(0, 0, 0, 0)')throw Error('Week control elements not separated');
      }
@@ -90,11 +83,15 @@ const {chromium}=require('playwright');
   }
   await page.setViewportSize({width:390,height:844});
   await page.goto('http://127.0.0.1:18081/goals');
-  // Selecting another plan must work before and after navigating weeks.
+  // Mobile personal controls are available in settings and preserve plan context.
+  await page.getByRole('link',{name:'Настройки',exact:true}).click();
+  await page.waitForURL('**/settings?**');
   const selector=page.locator('#student-switch');
   await selector.selectOption('2');
   await page.waitForURL(url=>url.searchParams.get('student')==='2');
   if(await selector.inputValue()!=='2')throw Error('Pupil plan selection lost');
+  await page.getByRole('link',{name:'Цели',exact:true}).click();
+  await page.waitForURL('**/goals?**');
   const cdp=await context.newCDPSession(page);
   async function swipe(x1,y1,x2,y2){
    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:x1,y:y1}]});
@@ -105,32 +102,21 @@ const {chromium}=require('playwright');
   await swipe(270,300,90,305);
   await page.waitForURL(url=>url.searchParams.has('week'));
   const nextWeek=await page.locator('.week-switch time').getAttribute('datetime');
-  if(nextWeek<=currentWeek||await selector.inputValue()!=='2')throw Error('Swipe lost student or failed to advance');
+  if(nextWeek<=currentWeek||new URL(page.url()).searchParams.get('student')!=='2')throw Error('Swipe lost student or failed to advance');
   await swipe(90,300,270,305);
   await page.waitForFunction(week=>document.querySelector('.week-switch time').dateTime===week,currentWeek);
   const beforeVertical=page.url();
   await swipe(190,400,195,250);
   if(page.url()!==beforeVertical)throw Error('Vertical scroll switched week');
+  await page.getByRole('link',{name:'Настройки',exact:true}).click();
+  await page.waitForURL('**/settings?**');
+  const oldTheme=await page.locator('html').getAttribute('data-theme');
+  await page.locator('#mobile-settings-controls #theme-toggle').click();
+  if(await page.locator('html').getAttribute('data-theme')===oldTheme)throw Error('Theme toggle failed in mobile settings');
   await selector.selectOption('1');
   await page.waitForURL(url=>url.searchParams.get('student')==='1');
-  const menuButton=page.getByRole('button',{name:'Открыть меню',exact:true});
-  await menuButton.click();
-  if(!await page.locator('#mobile-menu').evaluate(node=>node.open)||await menuButton.getAttribute('aria-expanded')!=='true')throw Error('Menu did not open');
-  const menuBounds=await page.locator('#mobile-menu').boundingBox();
-  if(menuBounds.width>250||menuBounds.height>450||menuBounds.x<12||menuBounds.y<40)throw Error('Menu is not a compact floating block');
-  const oldTheme=await page.locator('html').getAttribute('data-theme');
-  await page.locator('#mobile-menu #theme-toggle').click();
-  if(await page.locator('html').getAttribute('data-theme')===oldTheme)throw Error('Theme toggle failed in menu');
-  await page.screenshot({path:'/tmp/study-mobile-menu.png'});
-  await page.keyboard.press('Escape');
-  await page.waitForFunction(()=>!document.getElementById('mobile-menu').open&&document.getElementById('mobile-menu-toggle').getAttribute('aria-expanded')==='false');
-  if(await page.locator('#mobile-menu').evaluate(node=>node.open)||await menuButton.getAttribute('aria-expanded')!=='false')throw Error('Menu Escape failed');
-  if(!await menuButton.evaluate(node=>document.activeElement===node))throw Error('Menu focus was not returned');
-  await menuButton.click();
-  await page.mouse.click(380,400);
-  if(await page.locator('#mobile-menu').evaluate(node=>node.open))throw Error('Backdrop did not close menu');
-  await menuButton.click();
-  await page.locator('#mobile-menu').getByRole('link',{name:'Расписание',exact:true}).click();
+  await page.screenshot({path:'/tmp/study-mobile-settings.png'});
+  await page.getByRole('link',{name:'Расписание',exact:true}).click();
   await page.waitForURL('**/schedule?**');
   const scheduleWeek=await page.locator('.week-switch time').getAttribute('datetime');
   await swipe(270,240,90,245);
@@ -138,10 +124,11 @@ const {chromium}=require('playwright');
   await swipe(90,240,270,245);
   await page.waitForFunction(week=>document.querySelector('.week-switch time').dateTime===week,scheduleWeek);
   await page.screenshot({path:'/tmp/study-mobile-schedule.png'});
-  await menuButton.click();
+  await page.getByRole('link',{name:'Настройки',exact:true}).click();
+  await page.waitForURL('**/settings?**');
   await page.setViewportSize({width:1280,height:844});
-  await page.waitForFunction(()=>!document.getElementById('mobile-menu').open&&document.querySelector('header > nav'));
-  if(await page.locator('#mobile-menu').evaluate(node=>node.open)||!await page.locator('header > nav').isVisible())throw Error('Desktop resize did not restore navigation');
+  await page.waitForFunction(()=>document.querySelector('header > #theme-toggle')&&document.querySelector('header > .profile-cards'));
+  if(!await page.locator('header > nav').isVisible()||!await page.locator('header > #theme-toggle').isVisible())throw Error('Desktop resize did not restore controls');
   await page.addInitScript(()=>{
    const original=window.matchMedia.bind(window);
    window.matchMedia=query=>query==='(display-mode: standalone)'?{matches:true}:original(query);

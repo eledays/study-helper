@@ -38,64 +38,31 @@ html[data-fixed-theme] main{max-width:1200px;padding:clamp(48px,12vh,120px) 24px
 @media(max-width:650px){.board-toolbar{padding:0 16px 12px}.week-switch{width:100%}.card-board{padding-top:12px}}
 @media(max-width:350px){.week-switch time{font-size:12px}}
 
-/* Mobile navigation and compact planning controls; desktop styles stay above. */
-.mobile-menu-toggle{display:none}
+/* Mobile sections stay in the header; personal controls live in settings. */
+.profile-initial,.mobile-plan-label,.mobile-settings-controls{display:none}
 @media(max-width:750px){
- header{flex-wrap:nowrap;gap:10px;padding:12px 16px}
- .mobile-menu-toggle{display:grid;place-items:center;flex:none;width:36px;height:36px;padding:0;margin:0;border-radius:9px}
- .mobile-menu-toggle .material-symbols-outlined,.mobile-menu-heading .material-symbols-outlined{font-size:24px;width:24px;height:24px;overflow:hidden}
- header .profile-cards{width:auto;min-width:0;flex:1;order:0;justify-content:flex-end;gap:6px;margin-left:auto}
- header .profile-card{height:36px;min-height:36px;padding:0 10px;font-size:13px;border-radius:9px;min-width:0}
- header .profile-name{max-width:50%;gap:6px;flex:0 1 auto;line-height:20px}
- header .profile-name:only-child{max-width:200px}
- header .profile-avatar{width:24px;height:24px}
- header .profile-student{max-width:50%;flex:0 1 auto;padding:0 6px}
- header .profile-student select{height:36px;max-width:170px;width:100%;margin:0;padding:0 4px;font-size:13px;line-height:20px;text-overflow:ellipsis}
- html.mobile-menu-open{overflow:hidden}
- .mobile-menu{position:fixed;inset:0 auto 0 0;width:min(300px,calc(100% - 48px));max-width:none;height:100dvh;max-height:100dvh;margin:0;padding:20px 16px;padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(20px,env(safe-area-inset-bottom));border:0;border-radius:0 16px 16px 0;background:var(--paper);color:var(--ink);overflow-y:auto;box-shadow:8px 0 32px #0002}
- .mobile-menu::backdrop{background:rgb(0 0 0 / .35)}
- .mobile-menu-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;gap:12px}
- .mobile-menu-heading h2{margin:0;font-size:20px}
- .mobile-menu-heading button{display:grid;place-items:center;width:36px;height:36px;padding:0;margin:0}
- .mobile-menu nav{display:flex;flex-direction:column;gap:6px;margin:0;width:100%}
- .mobile-menu nav a{flex:none;padding:12px 14px;text-align:left;font-size:15px}
- .mobile-menu .theme-toggle{display:block;width:100%;margin:24px 0 0;padding:12px 14px;text-align:left;font-size:14px}
- .board-toolbar{padding:0 16px 12px}
- .week-switch{width:100%;grid-template-columns:36px minmax(0,1fr) 36px;gap:8px;padding:0;background:transparent;border-radius:0}
- .week-switch a,.week-switch time{height:36px;min-height:36px;border-radius:9px;background:var(--surface)}
- .week-switch a{padding:0}.week-switch time{display:grid;place-items:center;padding:0 4px;font-size:13px}
- .week-switch a .material-symbols-outlined{font-size:22px;width:22px;height:22px;overflow:hidden}
+ header{display:block;padding:12px 16px;min-width:0}
+ header > .theme-toggle,header > .profile-cards{display:none}
+ header nav{display:flex;flex-wrap:nowrap;width:100%;min-width:0;margin:0;gap:4px;overflow-x:auto;scrollbar-width:none;justify-content:flex-start}
+ header nav::-webkit-scrollbar{display:none}
+ header nav a{flex:0 0 auto;white-space:nowrap;font-size:13px;padding:9px 11px}
+ .mobile-settings-controls{display:block}
+ .mobile-settings-controls.card{padding:20px;background:var(--surface);border-radius:14px}
+ #mobile-settings-controls{display:flex;flex-direction:column;gap:16px}
+ #mobile-settings-controls .profile-cards{display:flex;flex-direction:column;align-items:stretch;width:100%;margin:0;gap:16px;order:0}
+ #mobile-settings-controls .profile-name{display:flex;max-width:100%;padding:0;background:transparent;font-size:15px;gap:9px}
+ #mobile-settings-controls .profile-avatar{width:28px;height:28px}
+ #mobile-settings-controls .profile-initial{display:grid;place-items:center;flex:none;width:28px;height:28px;background:var(--field);border-radius:50%;font-size:13px}
+ #mobile-settings-controls .profile-name:has(.profile-avatar:not([hidden])) .profile-initial{display:none}
+ #mobile-settings-controls .profile-student{display:block;padding:0;background:transparent}
+ #mobile-settings-controls .mobile-plan-label{display:block;margin:0 0 6px;font-size:13px;color:var(--muted)}
+ #mobile-settings-controls .profile-student select{width:100%;max-width:none;margin:0;padding:10px 12px;font-size:16px;background:var(--field)}
+ #mobile-settings-controls .theme-toggle{order:1;width:100%;padding:10px 12px;font-size:14px;background:var(--field);text-align:left}
+ .board-toolbar{padding:0 16px 12px;justify-content:center}
+ .week-switch{display:block;width:auto;flex:none;margin:0;background:transparent;padding:0;touch-action:pan-y pinch-zoom}
+ .week-switch a{display:none}
+ .week-switch time{display:flex;align-items:center;justify-content:center;height:30px;min-height:30px;padding:0 8px;border-radius:12px;background:var(--surface);font-size:11px;line-height:1;white-space:nowrap}
+ .week-prefix{display:none}
  .schedule-board{width:calc(100% - 32px);max-width:none}
-}
-@media(max-width:350px){.week-switch time{font-size:12px}}
-
-.profile-initial{display:none}
-@media(max-width:750px){
- header{gap:10px;padding:12px 16px}
- .mobile-menu-toggle{width:36px;height:36px;border-radius:9px}
- header .week-switch{display:block;width:auto;flex:none;order:0;margin:0 auto;background:transparent;touch-action:pan-y pinch-zoom}
- header .week-switch a{display:none}
- header:has(.week-switch) .profile-cards{max-width:calc(100% - 134px)}
- header .week-switch time{display:flex;align-items:center;justify-content:center;height:30px;min-height:30px;padding:0 8px;border-radius:12px;font-size:11px;line-height:1;white-space:nowrap}
- header .week-prefix{display:none}
- header .profile-cards{gap:6px;flex:0 1 auto;margin-left:0}
- header .profile-card{height:36px;min-height:36px;padding:0 10px;border-radius:9px}
- header .profile-name{max-width:100%;flex:0 1 auto}
- header .profile-name:only-child{max-width:100%}
- header .teacher-profile .profile-name{width:36px;max-width:36px;flex:0 0 36px;padding:4px;justify-content:center;border-radius:50%}
- header .teacher-profile .profile-label{display:none}
- header .teacher-profile .profile-initial{display:grid;place-items:center;width:24px;height:24px;flex:none;font-size:12px;font-weight:600}
- header .teacher-profile .profile-name:has(.profile-avatar:not([hidden])) .profile-initial{display:none}
- header .profile-student{flex:0 1 170px;max-width:170px;min-width:88px;padding:0 6px}
- header .profile-student select{height:36px;min-width:0;max-width:none;width:100%;padding:0 4px;font-size:13px}
- .board-toolbar:not(:has(.week-switch)){display:none}
- .board-toolbar:empty{display:none}
- .mobile-menu{inset:52px auto auto 16px;width:max-content;min-width:180px;max-width:calc(100% - 32px);height:auto;max-height:calc(100dvh - 68px);margin:0;padding:12px;border-radius:14px;box-shadow:0 8px 32px #0003}
- .mobile-menu-heading{margin-bottom:8px;gap:16px}
- .mobile-menu-heading h2{font-size:16px}
- .mobile-menu-heading button{width:28px;height:28px}
- .mobile-menu nav{gap:3px}
- .mobile-menu nav a{padding:8px 12px;font-size:14px}
- .mobile-menu .theme-toggle{margin-top:12px;padding:9px 12px;font-size:13px}
  .planning-board{touch-action:pan-y pinch-zoom}
 }

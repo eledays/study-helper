@@ -12,13 +12,12 @@
   <link rel="apple-touch-icon" href="/static/icon-180.png">
   <title>study-bot</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="{{url_for('static',filename='favicon.svg')}}">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&amp;icon_names=add,check,chevron_left,chevron_right,close,edit,menu&amp;display=block">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined&amp;icon_names=add,check,chevron_left,chevron_right,close,edit&amp;display=block">
   <link rel="stylesheet" href="{{url_for('static',filename='style.css')}}">
   <script defer src="{{url_for('static',filename='app.js')}}"></script>
 </head>
 <body>
 {% if request.endpoint != 'login' %}<header>
-  <button type="button" class="quiet mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Открыть меню" aria-controls="mobile-menu" aria-expanded="false"><span class="material-symbols-outlined" aria-hidden="true">menu</span></button>
   {% if g.user %}
   <nav aria-label="Разделы">
     {% for key,label in [('goals','Цели'),('schedule','Расписание'),('analytics','Аналитика'),('editing','Редактирование'),('settings','Настройки')] %}
@@ -32,6 +31,7 @@
     <a class="profile-card profile-name" title="{{g.user.name}}" href="{{url_for('page',section='settings')}}">{% if avatar_url or avatar_fallback_url %}<img class="profile-avatar" src="{{avatar_url or avatar_fallback_url}}" data-fallback="{{avatar_fallback_url if avatar_url else ''}}" alt="" width="28" height="28" referrerpolicy="no-referrer">{% endif %}<span class="profile-initial" aria-hidden="true">{{g.user.name[:1] or '?'}}</span><span class="profile-label">{{g.user.name}}</span></a>
     {% if g.user.is_teacher or pupils or g.student.id != g.user.id %}
     <div class="profile-card profile-student">
+      <label class="mobile-plan-label" for="student-switch">Показывать план</label>
       <select aria-label="Выбранный ученик" id="student-switch">
         <option value="{{g.user.id}}" {{'selected' if g.student.id == g.user.id}}>Мой план</option>
         {% for pupil in pupils %}<option value="{{pupil.id}}" {{'selected' if g.student.id == pupil.id}}>{{pupil.name}}</option>{% endfor %}
@@ -41,10 +41,7 @@
   </div>
   {% endif %}
 </header>
-<dialog id="mobile-menu" class="mobile-menu" aria-labelledby="mobile-menu-title">
-  <div class="mobile-menu-heading"><h2 id="mobile-menu-title">Меню</h2><button type="button" class="quiet" id="mobile-menu-close" aria-label="Закрыть меню"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
-  <div class="mobile-menu-content"></div>
-</dialog>{% endif %}
+{% endif %}
 <main class="{{'board-page' if section in ('goals','schedule')}}">
   {% for category,message in get_flashed_messages(with_categories=true) %}<p class="notice {{category}}" role="status">{{message.rstrip('.')|display_label}}</p>{% endfor %}
   {% block content %}{% endblock %}
