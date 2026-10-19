@@ -43,7 +43,7 @@ html[data-fixed-theme] main{max-width:1200px;padding:clamp(48px,12vh,120px) 24px
 @media(max-width:750px){
  header{flex-wrap:nowrap;gap:10px;padding:12px 16px}
  .mobile-menu-toggle{display:grid;place-items:center;flex:none;width:36px;height:36px;padding:0;margin:0;border-radius:9px}
- .mobile-menu-toggle .material-symbols-outlined{font-size:24px}
+ .mobile-menu-toggle .material-symbols-outlined,.mobile-menu-heading .material-symbols-outlined{font-size:24px;width:24px;height:24px;overflow:hidden}
  header .profile-cards{width:auto;min-width:0;flex:1;order:0;justify-content:flex-end;gap:6px;margin-left:auto}
  header .profile-card{height:36px;min-height:36px;padding:0 10px;font-size:13px;border-radius:9px;min-width:0}
  header .profile-name{max-width:50%;gap:6px;flex:0 1 auto;line-height:20px}
@@ -64,7 +64,7 @@ html[data-fixed-theme] main{max-width:1200px;padding:clamp(48px,12vh,120px) 24px
  .week-switch{width:100%;grid-template-columns:36px minmax(0,1fr) 36px;gap:8px;padding:0;background:transparent;border-radius:0}
  .week-switch a,.week-switch time{height:36px;min-height:36px;border-radius:9px;background:var(--surface)}
  .week-switch a{padding:0}.week-switch time{display:grid;place-items:center;padding:0 4px;font-size:13px}
- .week-switch a .material-symbols-outlined{font-size:22px}
+ .week-switch a .material-symbols-outlined{font-size:22px;width:22px;height:22px;overflow:hidden}
  .schedule-board{width:calc(100% - 32px);max-width:none}
 }
 @media(max-width:350px){.week-switch time{font-size:12px}}

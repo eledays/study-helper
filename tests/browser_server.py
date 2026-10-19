@@ -17,5 +17,6 @@ if __name__ == '__main__':
             bot_username='', bot_token='', cookie_secure=False,
             base_url='http://127.0.0.1:18081'))
         with app.extensions['db'].session.begin() as s:
-            s.add(User(id=1, telegram_id=100, name='Browser smoke'))
+            s.add(User(id=1, telegram_id=100, name='Browser smoke', is_teacher=True))
+            s.add(User(id=2, telegram_id=200, name='Ученик с длинным именем', teacher_id=1))
         app.run(host='127.0.0.1', port=18081, use_reloader=False)

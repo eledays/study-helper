@@ -45,12 +45,24 @@ const {chromium}=require('playwright');
   await page.reload();
   await page.waitForURL(url=>!url.searchParams.has('week'));
   if(await page.locator('.week-switch time').getAttribute('datetime')==='2020-01-13')throw Error('Reload kept old week');
-  for(const width of [320,390,1280]){
+  for(const width of [320,390,750,1280]){
    await page.setViewportSize({width,height:844});
    for(const route of ['/goals','/schedule','/analytics','/editing','/settings']){
     await page.goto('http://127.0.0.1:18081'+route);
+    if(width<=750){
+     const menuButton=page.getByRole('button',{name:'Открыть меню',exact:true});
+     if(!await menuButton.isVisible()||await page.locator('header > nav').count())throw Error('Mobile navigation not collapsed');
+     const profile=await page.locator('.profile-name').boundingBox(),student=await page.locator('.profile-student').boundingBox();
+     if(profile.height!==36||student.height!==profile.height)throw Error('Unequal profile control heights');
+    }else{
+     if(await page.locator('#mobile-menu-toggle').isVisible()||!await page.locator('header > nav').isVisible()||!await page.locator('header > .theme-toggle').isVisible())throw Error('Desktop navigation changed');
+    }
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
-    if(overflow)throw Error('Horizontal overflow: '+route+' '+width);
+    if(overflow){
+     await page.screenshot({path:'/tmp/study-mobile-overflow.png',fullPage:true});
+     console.log(await page.evaluate(()=>[...document.querySelectorAll('body *')].filter(node=>node.getBoundingClientRect().right>innerWidth+2).map(node=>({tag:node.tagName,cls:node.className,width:node.getBoundingClientRect().width,right:node.getBoundingClientRect().right})).slice(0,20)));
+     throw Error('Horizontal overflow: '+route+' '+width);
+    }
     if(route==='/schedule'&&width===320)await page.screenshot({path:'/tmp/study-mobile.png',fullPage:true});
     if(['/goals','/schedule'].includes(route)){
      const bounds=await page.locator('.week-switch').boundingBox();
@@ -59,9 +71,39 @@ const {chromium}=require('playwright');
      if(cards.y<bounds.y+bounds.height)throw Error('Week selector overlaps cards');
      const label=await page.locator('.week-switch time').evaluate(node=>node.scrollWidth>node.clientWidth);
      if(label)throw Error('Week label overflows');
+     if(width<=750){
+      for(const element of await page.locator('.week-switch > *').all())if((await element.boundingBox()).height!==36)throw Error('Week control is not compact');
+      const background=await page.locator('.week-switch').evaluate(node=>getComputedStyle(node).backgroundColor);
+      if(background!=='rgba(0, 0, 0, 0)')throw Error('Week control elements not separated');
+     }
+     if(route==='/schedule'&&width<=650&&Math.abs(cards.width-(width-32))>1)throw Error('Schedule does not fill available width');
     }
    }
   }
+  await page.setViewportSize({width:390,height:844});
+  await page.goto('http://127.0.0.1:18081/goals');
+  const menuButton=page.getByRole('button',{name:'Открыть меню',exact:true});
+  await menuButton.click();
+  if(!await page.locator('#mobile-menu').evaluate(node=>node.open)||await menuButton.getAttribute('aria-expanded')!=='true')throw Error('Menu did not open');
+  const oldTheme=await page.locator('html').getAttribute('data-theme');
+  await page.locator('#mobile-menu #theme-toggle').click();
+  if(await page.locator('html').getAttribute('data-theme')===oldTheme)throw Error('Theme toggle failed in menu');
+  await page.screenshot({path:'/tmp/study-mobile-menu.png'});
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>!document.getElementById('mobile-menu').open&&document.getElementById('mobile-menu-toggle').getAttribute('aria-expanded')==='false');
+  if(await page.locator('#mobile-menu').evaluate(node=>node.open)||await menuButton.getAttribute('aria-expanded')!=='false')throw Error('Menu Escape failed');
+  if(!await menuButton.evaluate(node=>document.activeElement===node))throw Error('Menu focus was not returned');
+  await menuButton.click();
+  await page.mouse.click(380,400);
+  if(await page.locator('#mobile-menu').evaluate(node=>node.open))throw Error('Backdrop did not close menu');
+  await menuButton.click();
+  await page.locator('#mobile-menu').getByRole('link',{name:'Расписание',exact:true}).click();
+  await page.waitForURL('**/schedule?**');
+  await page.screenshot({path:'/tmp/study-mobile-schedule.png'});
+  await menuButton.click();
+  await page.setViewportSize({width:1280,height:844});
+  await page.waitForFunction(()=>!document.getElementById('mobile-menu').open&&document.querySelector('header > nav'));
+  if(await page.locator('#mobile-menu').evaluate(node=>node.open)||!await page.locator('header > nav').isVisible())throw Error('Desktop resize did not restore navigation');
   await page.addInitScript(()=>{
    const original=window.matchMedia.bind(window);
    window.matchMedia=query=>query==='(display-mode: standalone)'?{matches:true}:original(query);
@@ -75,7 +117,7 @@ const {chromium}=require('playwright');
   });
   await page.waitForURL(url=>!url.searchParams.has('week'));
   const cachedRequests=await page.evaluate(async()=>{
-   const cache=await caches.open('study-shell-v1');return (await cache.keys()).map(r=>new URL(r.url).pathname);
+   const key=(await caches.keys()).find(key=>key.startsWith('study-shell-'));const cache=await caches.open(key);return (await cache.keys()).map(r=>new URL(r.url).pathname);
   });
   if(cachedRequests.some(path=>!path.startsWith('/static/')))throw Error('Private page cached');
   // Installable metadata, root worker, offline navigation, and recovery.
