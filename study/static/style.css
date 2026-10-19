@@ -73,19 +73,10 @@ html[data-fixed-theme] main{max-width:1200px;padding:clamp(48px,12vh,120px) 24px
  .planning-board{touch-action:pan-y pinch-zoom}
 }
 
-/* Frosted floating controls retain solid, legible fallbacks without blur. */
+/* Quiet, solid floating controls with a fine edge and a soft shadow. */
 @media(max-width:750px){
  .material-symbols-outlined{font-family:'Material Symbols Rounded'}
- .board-page{--glass-fill:rgb(255 255 255 / .62);--glass-add:rgb(167 219 128 / .65);--glass-edge:rgb(255 255 255 / .8);--glass-glint:rgb(255 255 255 / .8);--glass-shadow:rgb(31 43 22 / .22)}
- html[data-theme=dark] .board-page{--glass-fill:rgb(40 44 42 / .66);--glass-add:rgb(100 145 73 / .56);--glass-edge:rgb(255 255 255 / .25);--glass-glint:rgb(255 255 255 / .2);--glass-shadow:rgb(0 0 0 / .48)}
- .week-switch time,.board-actions .round-action{border:1px solid var(--glass-edge);background:var(--surface);color:var(--ink);box-shadow:0 8px 24px var(--glass-shadow),0 2px 6px var(--glass-shadow),inset 0 1px 0 var(--glass-glint),inset 0 -1px 0 rgb(0 0 0 / .08)}
- .board-actions #board-add{background:var(--accent);color:var(--accent-ink)}
- @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  .week-switch time,.board-actions .round-action{background:linear-gradient(145deg,var(--glass-glint),transparent 42%,rgb(255 255 255 / .05)),var(--glass-fill);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%)}
-  .board-actions #board-add{background:linear-gradient(145deg,var(--glass-glint),transparent 55%),var(--glass-add);color:var(--ink)}
- }
- @media(prefers-reduced-transparency:reduce){
-  .week-switch time,.board-actions .round-action{background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none}
-  .board-actions #board-add{background:var(--accent);color:var(--accent-ink)}
- }
+ .week-switch time,.board-actions .round-action{border:1px solid var(--line);background:var(--paper);color:var(--ink);box-shadow:0 3px 12px rgb(0 0 0 / .14)}
+ html[data-theme=dark] .week-switch time,html[data-theme=dark] .board-actions .round-action{box-shadow:0 3px 12px rgb(0 0 0 / .3)}
+ .board-actions #board-add{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
 }
