@@ -140,7 +140,7 @@ window.StudyRouter = (() => {
    putCache(canonical(new URL(data.url,location.href).href),data);
    if(!committed){render(data,direction,{historyMode:mode,scroll});committed=true}
    else if(currentHTML!==data.html){
-    if(dirtyViews.has(document.querySelector('main')))notice('Данные обновились. Сохраните изменения перед обновлением экрана.',()=>navigate(location.href,'section',{replace:true,force:true}));
+    if(dirtyViews.has(document.querySelector('main'))||document.querySelector('dialog[open]'))notice('Данные обновились. Сохраните изменения перед обновлением экрана.',()=>navigate(location.href,'section',{replace:true,force:true}));
     else render(data,direction,{historyMode:'replace',scroll:[scrollX,scrollY],focus:false});
    }
    schedulePrefetch();
@@ -152,9 +152,9 @@ window.StudyRouter = (() => {
  }
  async function submit(form,submitter) {
   if(mutation||form.dataset.submitting)return;
-  const method=(form.method||'get').toLowerCase(),data=new FormData(form);
+  const method=(form.getAttribute('method')||'get').toLowerCase(),data=new FormData(form);
   if(submitter?.name)data.append(submitter.name,submitter.value);
-  const url=new URL(form.action||location.href);
+  const url=new URL(form.getAttribute('action')||location.href,location.href);
   if(method==='get'){url.search=new URLSearchParams(data).toString();return navigate(url.href)}
   mutation=true;form.dataset.submitting='true';activeRequest?.abort();const requestID=++sequence;clearCache();busy(true);
   const buttons=[...form.querySelectorAll('button:not([type]),button[type="submit"],input[type="submit"]')].map(button=>({button,disabled:button.disabled}));
@@ -177,8 +177,8 @@ window.StudyRouter = (() => {
   navigate(url.href,direction);
  });
  document.addEventListener('submit',event=>{
-  const form=event.target,method=(form.method||'get').toLowerCase(),url=new URL(form.action||location.href);
-  if(!ready||event.defaultPrevented||form.target||form.dataset.native!==undefined||url.origin!==location.origin||!['get','post'].includes(method)||form.querySelector('input[type="file"]'))return;
+  const form=event.target,method=(form.getAttribute('method')||'get').toLowerCase(),url=new URL(form.getAttribute('action')||location.href,location.href);
+  if(!ready||event.defaultPrevented||form.getAttribute('target')||form.dataset.native!==undefined||url.origin!==location.origin||!['get','post'].includes(method)||form.querySelector('input[type="file"]'))return;
   if(method==='get'&&!appURL(url.href))return;
   if(method==='post'&&['/logout','/account/delete','/auth/debug','/auth/telegram'].includes(url.pathname)){clearCache();return}
   event.preventDefault();submit(form,event.submitter);

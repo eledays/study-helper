@@ -20,6 +20,7 @@ jobs:
       - run: pip check
       - run: python -m pytest -q
       - run: node --check study/static/app.js
+      - run: node --check study/static/navigation.js
       - run: npm install --prefix /tmp/study-browser-tools playwright@1.62.1
       - run: /tmp/study-browser-tools/node_modules/.bin/playwright install --with-deps chromium
       - name: Browser scenarios
@@ -32,6 +33,7 @@ jobs:
             sleep 1
           done
           NODE_PATH=/tmp/study-browser-tools/node_modules node tests/browser_smoke.cjs
+          NODE_PATH=/tmp/study-browser-tools/node_modules node tests/browser_spa.cjs
       - run: docker build --pull -t study-helper:ci .
       - run: bash deploy/smoke.sh study-helper:ci
   dependencies:
