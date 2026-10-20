@@ -57,8 +57,12 @@ def test_total_exam_delete_removes_total(client, db):
         activity=record_exam_total(s,1,1,1,date(2026,10,12),3,'total-for-delete')
         activity_id=activity.id
     response=client.get('/editing')
-    assert response.status_code==200 and 'Первичный балл'.encode() in response.data
+    assert response.status_code==200
+    assert f'/activity/{activity_id}/editor'.encode() in response.data
+    editor=client.get(f'/activity/{activity_id}/editor')
+    assert editor.status_code==200 and 'Первичный балл' in editor.json['html']
     assert client.post(f'/activity/{activity_id}/delete',data={'csrf':'test-csrf'}).status_code==302
+    assert client.get(f'/activity/{activity_id}/editor').status_code==404
     with db.session() as s:
         assert s.get(Activity,activity_id) is None
         assert s.get(ExamTotal,activity_id) is None
