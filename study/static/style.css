@@ -115,3 +115,6 @@ html[data-fixed-theme] main{max-width:1200px;padding:clamp(48px,12vh,120px) 24px
 html[data-loading=true]::before{content:'';position:fixed;inset:0 0 auto;height:3px;background:var(--accent);z-index:100;transform-origin:left;animation:navigation-loading 1s ease-in-out infinite alternate}
 @keyframes navigation-loading{from{transform:scaleX(.15)}to{transform:scaleX(.9)}}
 @media(prefers-reduced-motion:reduce){html[data-loading=true]::before{animation:none;transform:none}}
+
+/* SVGs use the existing icon sizing and inherit the control color. */
+.material-symbols-outlined svg{display:block;width:1em;height:1em}

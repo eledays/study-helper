@@ -1,3 +1,21 @@
 {% macro hidden() %}{% if section == 'editing' and tab == 'works' %}<input type="hidden" name="record_page" value="{{record_page}}"><input type="hidden" name="record_subject" value="{{record_subject}}">{% endif %}{% if tab is defined and section == "editing" %}<input type="hidden" name="return_tab" value="{{tab}}">{% endif %}<input type="hidden" name="return_section" value="{{section}}"><input type="hidden" name="csrf" value="{{ csrf }}">{% if week is defined %}<input type="hidden" name="return_week" value="{{week}}">{% endif %}<input type="hidden" name="student" value="{{ g.student.id }}">{% endmacro %}
 {% macro subjects_select(subjects, required=true) %}<label>Предмет<select name="subject_id" {{ 'required' if required }}><option value="">Выберите предмет</option>{% for s in subjects %}<option value="{{ s.id }}">{{ s.name|display_label }}</option>{% endfor %}</select></label>{% endmacro %}
 {% macro scope() %}<label>Применить изменение<select name="scope" required><option value="one" selected>Только эта неделя</option><option value="future">Эта и следующие</option><option value="all">Весь период, включая прошлое</option></select></label>{% endmacro %}
+
+{# Local SVG geometry: icons remain available without third-party fonts. #}
+{% macro icon(name, extra='') -%}
+{% set paths = {
+ 'add': 'M12 5v14M5 12h14',
+ 'close': 'm6 6 12 12M6 18 18 6',
+ 'chevron_left': 'm15 5-7 7 7 7',
+ 'chevron_right': 'm9 5 7 7-7 7',
+ 'flag': 'M5 21V3h14l-3 5 3 5H5',
+ 'calendar_month': 'M4 5h16v16H4zM8 3v4m8-4v4M4 10h16M8 14h2m4 0h2m-8 3h2m4 0h2',
+ 'bar_chart': 'M4 20h16M6 16v-5m6 5V4m6 12V8',
+ 'edit': 'm4 16-1 5 5-1L21 7l-4-4zM14 6l4 4',
+ 'edit_note': 'M4 5h12M4 10h8M4 15h5m3 3-1 4 4-1 7-7-3-3z',
+ 'settings': 'M9 3h6l1 4 4 1v8l-4 1-1 4H9l-1-4-4-1V8l4-1zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
+ 'check': 'm4 12 5 5L20 6'
+} %}
+<span class="material-symbols-outlined {{extra}}" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="{{paths[name]}}"/></svg></span>
+{%- endmacro %}

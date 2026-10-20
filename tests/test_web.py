@@ -122,18 +122,23 @@ def test_signed_telegram_avatar_is_stored_updated_and_optional(db):
         check='\n'.join(f'{k}={v}' for k,v in sorted(data.items()))
         data['hash']=hmac.new(hashlib.sha256(token.encode()).digest(),check.encode(),hashlib.sha256).hexdigest()
         return data
+    def login(data):
+        client.get('/login')
+        with client.session_transaction() as state:
+            data = {**data, 'state': state['login_state']}
+        return client.get('/auth/telegram', query_string=data)
     photo='https://cdn4.telesco.pe/file/avatar.jpg'
-    assert client.get('/auth/telegram',query_string=signed(photo)).status_code==302
+    assert login(signed(photo)).status_code==302
     reopened=Database(str(db.engine.url))
     with reopened.session() as s:assert s.get(UserAvatar,1).photo_url==photo
     goals=client.get('/goals').data.decode()
     assert f'src="{photo}"' in goals and 'class="profile-avatar"' in goals
     data=signed(photo);data['photo_url']='https://example.com/tampered.jpg'
-    assert client.get('/auth/telegram',query_string=data).status_code==403
+    assert login(data).status_code==403
     with db.session() as s:assert s.get(UserAvatar,1).photo_url==photo
-    assert client.get('/auth/telegram',query_string=signed('javascript:alert(1)')).status_code==302
+    assert login(signed('javascript:alert(1)')).status_code==302
     assert 'src="/profile/avatar"' in client.get('/goals').data.decode()
-    assert client.get('/auth/telegram',query_string=signed()).status_code==302
+    assert login(signed()).status_code==302
     assert 'src="/profile/avatar"' in client.get('/goals').data.decode()
 
 

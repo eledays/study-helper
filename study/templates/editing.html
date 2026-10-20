@@ -1,3 +1,4 @@
+{% from 'macros.html' import icon as ui_icon %}
 {% extends 'base.html' %}
 {% from 'macros.html' import hidden,scope,subjects_select with context %}
 {% block content %}
@@ -34,9 +35,9 @@
   <div class="subject-workspace">{% include 'subject_editor.html' %}</div>
   {% else %}
   <div class="editing-week week-switch">
-    <a aria-label="Предыдущая неделя" href="{{url_for('page',section='editing',tab='plan',student=g.student.id,week=week-timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_left</span></a>
+    <a aria-label="Предыдущая неделя" href="{{url_for('page',section='editing',tab='plan',student=g.student.id,week=week-timedelta(days=7))}}">{{ui_icon('chevron_left')}}</a>
     <time>Неделя: {{week.strftime('%d.%m')}} - {{(week+timedelta(days=6)).strftime('%d.%m')}}</time>
-    <a aria-label="Следующая неделя" href="{{url_for('page',section='editing',tab='plan',student=g.student.id,week=week+timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></a>
+    <a aria-label="Следующая неделя" href="{{url_for('page',section='editing',tab='plan',student=g.student.id,week=week+timedelta(days=7))}}">{{ui_icon('chevron_right')}}</a>
   </div>
   <div class="editing-plan-grid">
     <section class="workspace-card"><h2>Цели</h2>

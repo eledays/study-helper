@@ -40,7 +40,12 @@ document.querySelectorAll('form:not([data-goal-selection])').forEach(form=>{
  }
  subject.addEventListener('change',sync);kind?.addEventListener('change',sync);sync();
 });
-document.getElementById('student-switch')?.addEventListener('change',event=>{const url=new URL(location.href);url.searchParams.set('student',event.target.value);navigateWithMotion(url.toString())});
+document.getElementById('student-switch')?.addEventListener('change',event=>{
+ const select=event.target,url=new URL(location.href);url.searchParams.set('student',select.value);
+ // Only a rendered server response may commit a new student's context.
+ select.value=[...select.options].find(option=>option.defaultSelected)?.value||select.options[0].value;
+ navigateWithMotion(url.toString());
+});
 function wrapTables(root) {
  root.querySelectorAll('table').forEach(table=>{if(table.parentElement.classList.contains('table-scroll'))return;const wrapper=document.createElement('div');wrapper.className='table-scroll';table.before(wrapper);wrapper.append(table)});
 }
@@ -175,7 +180,11 @@ if(dataNode){
  }
  function wellbeing(){const container=document.getElementById('wellbeing-chart');if(container)draw(container,data.wellbeing.filter(inPeriod),[['mood','Самочувствие','var(--accent)'],['load','Нагрузка','var(--muted)']],5,'Самочувствие и нагрузка по датам')}
  function render(){rhythm();exams();taskPicker();wellbeing()}
- period.addEventListener('change',()=>{const url=new URL(location.href);url.searchParams.set('period',period.value);navigateWithMotion(url.toString())});
+ period.addEventListener('change',()=>{
+  const url=new URL(location.href);url.searchParams.set('period',period.value);
+  period.value=[...period.options].find(option=>option.defaultSelected)?.value||period.options[0].value;
+  navigateWithMotion(url.toString());
+ });
  document.getElementById('rhythm-subject').addEventListener('change',rhythm);
  document.getElementById('exam-subject').addEventListener('change',exams);
  document.getElementById('task-subject').addEventListener('change',taskPicker);

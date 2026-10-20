@@ -51,12 +51,12 @@ window.StudyRouter = (() => {
   if(!status){status=document.createElement('div');status.id='navigation-status';status.className='sr-only';status.setAttribute('role','status');status.setAttribute('aria-live','polite');document.body.append(status)}
   status.textContent=text;
  }
- function notice(text,retry) {
+ function notice(text,retry,parent=document.querySelector('main')) {
   document.getElementById('navigation-notice')?.remove();
   const banner=document.createElement('div');banner.id='navigation-notice';banner.className='notice navigation-notice';banner.setAttribute('role','alert');
   const message=document.createElement('span');message.textContent=text;banner.append(message);
   if(retry){const button=document.createElement('button');button.type='button';button.className='quiet';button.textContent='Повторить';button.addEventListener('click',retry);banner.append(button)}
-  document.querySelector('main')?.prepend(banner);
+  parent?.prepend(banner);
  }
  function hardNavigate(url) {clearCache();location.assign(url)}
  async function readView(response,isCurrent=()=>true,preserve=false) {
@@ -179,6 +179,11 @@ window.StudyRouter = (() => {
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
   try{
    const response=await fetch(url.href,{method:'POST',signal:controller.signal,body:new URLSearchParams(data),credentials:'same-origin',cache:'no-store',headers:{'X-Study-Navigation':'1'}});
+   if(response.status===422&&response.headers.get('Content-Type')?.includes('application/json')){
+    const error=await response.json();
+    notice(typeof error.error==='string'?error.error:'Проверьте введённые данные.',null,form);
+    return;
+   }
    const view=await readView(response,()=>!controller.signal.aborted&&requestID===sequence);if(!view)return;
    saved=true;if(pendingPop)return;
    render(view,'section',{historyMode:'push'});putCache(canonical(new URL(view.url,location.href).href),view);
@@ -217,12 +222,17 @@ window.StudyRouter = (() => {
  let scrollFrame;
  window.addEventListener('scroll',()=>{if(!scrollFrame)scrollFrame=requestAnimationFrame(()=>{scrollFrame=null;snapshotScroll()})},{passive:true});
  const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+ function refreshView() {
+  if(!ready)return;
+  if(standalone()&&['/goals','/schedule','/plan','/editing'].includes(location.pathname))resetPlanningWeek(true);
+  else navigate(location.href,'section',{replace:true,force:true,preserve:true,scroll:[scrollX,scrollY]});
+ }
  let wasHidden=document.hidden;
  document.addEventListener('visibilitychange',()=>{
   if(document.hidden){wasHidden=true;clearCache()}
-  else if(wasHidden){wasHidden=false;if(standalone())resetPlanningWeek(true);else if(ready)navigate(location.href,'section',{replace:true,force:true,preserve:true,scroll:[scrollX,scrollY]})}
+  else if(wasHidden){wasHidden=false;refreshView()}
  });
- window.addEventListener('pageshow',event=>{if(event.persisted&&standalone())resetPlanningWeek(true)});
+ window.addEventListener('pageshow',event=>{if(event.persisted){clearCache();refreshView()}});
  document.addEventListener('DOMContentLoaded',()=>{
   user=document.body.dataset.userId;version=document.body.dataset.viewVersion;ready=Boolean(user&&appURL(location.href));renderedURL=location.href;
   if(ready){history.scrollRestoration='manual';history.replaceState({study:true,scroll:[scrollX,scrollY]},'',location.href);schedulePrefetch()}

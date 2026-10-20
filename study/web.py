@@ -113,6 +113,8 @@ def create_app(settings=None):
     @app.errorhandler(ValueError)
     def invalid(error):
         g.db.rollback()
+        if request.method == 'POST' and request.headers.get('X-Study-Navigation') == '1':
+            return jsonify(error=str(error)), 422
         flash(str(error), 'error')
         section = request.form.get('return_section', 'goals')
         if section not in ('goals','schedule','settings','analytics','editing'):
@@ -181,7 +183,8 @@ def create_app(settings=None):
 
     @app.get('/login')
     def login():
-        return render_template('login.html')
+        session['login_state'] = secrets.token_urlsafe(32)
+        return render_template('login.html', login_state=session['login_state'])
 
     @app.post('/auth/debug')
     def debug_login():
@@ -200,6 +203,10 @@ def create_app(settings=None):
     @app.get('/auth/telegram')
     def auth():
         data = request.args.to_dict()
+        state = data.pop('state', '')
+        expected = session.get('login_state', '')
+        if not expected or not hmac.compare_digest(state.encode(), expected.encode()):
+            abort(403, 'Откройте страницу входа и повторите авторизацию')
         if not verify_telegram(data, settings.bot_token):
             abort(403, 'Не удалось проверить вход через Telegram')
         try:

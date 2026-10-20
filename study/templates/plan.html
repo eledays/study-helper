@@ -1,12 +1,13 @@
+{% from 'macros.html' import icon as ui_icon %}
 {% extends 'base.html' %}
 {% from 'macros.html' import hidden,subjects_select,scope with context %}
 {% block content %}
 <section class="planning-board" aria-label="{{'Цели' if section == 'goals' else 'Расписание'}}">
   <div class="board-toolbar">
     <div class="week-switch" aria-label="Выбор недели">
-      <a aria-label="Предыдущая неделя" href="{{url_for('page',section=section,student=g.student.id,week=week-timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_left</span></a>
+      <a aria-label="Предыдущая неделя" href="{{url_for('page',section=section,student=g.student.id,week=week-timedelta(days=7))}}">{{ui_icon('chevron_left')}}</a>
       <button type="button" class="week-trigger" id="week-picker-toggle" aria-label="Выбрать неделю" aria-haspopup="dialog" aria-controls="week-picker" aria-expanded="false"><time datetime="{{week}}" title="Неделя {{week.strftime('%d.%m.%Y')}} — {{(week+timedelta(days=6)).strftime('%d.%m.%Y')}}"><span class="week-prefix">Неделя: </span><span class="week-range">{{week.strftime('%d.%m')}}–{{(week+timedelta(days=6)).strftime('%d.%m')}}</span></time></button>
-      <a aria-label="Следующая неделя" href="{{url_for('page',section=section,student=g.student.id,week=week+timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></a>
+      <a aria-label="Следующая неделя" href="{{url_for('page',section=section,student=g.student.id,week=week+timedelta(days=7))}}">{{ui_icon('chevron_right')}}</a>
     </div>
 
   </div>
@@ -36,13 +37,13 @@
   {% endif %}
   </div>
   <dialog id="week-picker" class="create-dialog week-picker" aria-labelledby="week-picker-title" data-today="{{today}}">
-    <div class="dialog-heading"><h2 id="week-picker-title">Выбор недели</h2><button type="button" class="quiet dialog-close" id="week-picker-close" aria-label="Закрыть выбор недели"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+    <div class="dialog-heading"><h2 id="week-picker-title">Выбор недели</h2><button type="button" class="quiet dialog-close" id="week-picker-close" aria-label="Закрыть выбор недели">{{ui_icon('close')}}</button></div>
     <label class="week-date-label">Перейти к дате<input type="date" id="week-picker-date" value="{{week}}" min="2000-01-10" max="2099-12-31"></label>
     <div class="week-list" id="week-options" aria-label="Недели"></div>
     <div class="week-list-controls"><button type="button" class="quiet" id="weeks-earlier">Раньше</button><button type="button" class="quiet" id="weeks-today">Текущая неделя</button><button type="button" class="quiet" id="weeks-later">Позже</button></div>
   </dialog>
   <dialog id="board-create" class="create-dialog" aria-labelledby="create-title">
-    <div class="dialog-heading"><h2 id="create-title">{{'Новая цель' if section == 'goals' else 'Новый временной слот'}}</h2><button type="button" class="dialog-close quiet" aria-label="Закрыть" title="Закрыть"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+    <div class="dialog-heading"><h2 id="create-title">{{'Новая цель' if section == 'goals' else 'Новый временной слот'}}</h2><button type="button" class="dialog-close quiet" aria-label="Закрыть" title="Закрыть">{{ui_icon('close')}}</button></div>
   {% if section == 'goals' %}
     <form action="/goals" method="post" data-goal-selection>
       {{hidden()}}{{subjects_select(subjects)}}
@@ -67,8 +68,8 @@
   {% endif %}
   </dialog>
     <div class="board-actions">
-      <a class="round-action quiet" id="board-edit" aria-label="Редактировать план" title="Редактировать план" href="{{url_for('page',section='editing',tab='plan',student=g.student.id,week=week)}}"><span class="material-symbols-outlined" aria-hidden="true">edit</span></a>
-      <button type="button" class="round-action" id="board-add" aria-label="{{'Добавить цель' if section == 'goals' else 'Добавить занятие'}}" title="{{'Добавить цель' if section == 'goals' else 'Добавить занятие'}}" aria-expanded="false" aria-controls="board-create" aria-haspopup="dialog"><span class="material-symbols-outlined" aria-hidden="true">add</span></button>
+      <a class="round-action quiet" id="board-edit" aria-label="Редактировать план" title="Редактировать план" href="{{url_for('page',section='editing',tab='plan',student=g.student.id,week=week)}}">{{ui_icon('edit')}}</a>
+      <button type="button" class="round-action" id="board-add" aria-label="{{'Добавить цель' if section == 'goals' else 'Добавить занятие'}}" title="{{'Добавить цель' if section == 'goals' else 'Добавить занятие'}}" aria-expanded="false" aria-controls="board-create" aria-haspopup="dialog">{{ui_icon('add')}}</button>
     </div>
 </section>
 {% endblock %}

@@ -47,11 +47,14 @@ def test_registration_checks_whitelist_before_creating_user(client, db, monkeypa
     with client.session_transaction() as session:
         session.clear()
     enable(db)
-    assert client.get('/auth/telegram?id=999&first_name=New').status_code == 403
+    client.get('/login')
+    with client.session_transaction() as session:
+        data = {'id': '999', 'first_name': 'New', 'state': session['login_state']}
+    assert client.get('/auth/telegram', query_string=data).status_code == 403
     with db.session.begin() as s:
         assert s.scalar(select(User).where(User.telegram_id == 999)) is None
         s.add(AllowedTelegramUser(telegram_id=999))
-    assert client.get('/auth/telegram?id=999&first_name=New').status_code == 302
+    assert client.get('/auth/telegram', query_string=data).status_code == 302
     with db.session() as s:
         assert s.scalar(select(User).where(User.telegram_id == 999)) is not None
 
