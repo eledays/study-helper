@@ -214,7 +214,7 @@ if (planningBoard) {
  function moveWeek(next) {
   if (!mobileWeek.matches || document.querySelector('dialog[open]')) return;
   const link = weekControl?.querySelector(next ? 'a:last-child' : 'a:first-child');
-  if (link) location.assign(link.href);
+  if (link) navigateWithMotion(link.href, next ? 'next' : 'previous');
  }
  let gesture;
  const excluded = 'a,button,input,select,textarea,form,dialog,.table-scroll';
@@ -246,4 +246,53 @@ if (planningBoard) {
   if (event.target !== planningBoard || !['ArrowLeft','ArrowRight'].includes(event.key) || !mobileWeek.matches) return;
   event.preventDefault(); moveWeek(event.key === 'ArrowRight');
  });
+}
+
+const weekPicker = document.getElementById('week-picker');
+const weekToggle = document.getElementById('week-picker-toggle');
+if (weekPicker && weekToggle) {
+ const list = document.getElementById('week-options'), dateInput = document.getElementById('week-picker-date');
+ const selected = document.querySelector('.week-switch time').dateTime;
+ const iso = day => day.toISOString().slice(0,10);
+ const dayDate = text => new Date(`${text}T00:00:00Z`);
+ const addDays = (day,n) => new Date(day.getTime()+n*86400000);
+ const monday = day => addDays(day,-((day.getUTCDay()+6)%7));
+ const minimum = '2000-01-10', maximum = '2099-12-28';
+ const current = iso(monday(dayDate(weekPicker.dataset.today)));
+ const format = new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'UTC'});
+ let center = selected;
+ function renderWeeks(focusSelected = false) {
+  list.replaceChildren();
+  for (let n=-8;n<=8;n++) {
+   const day = addDays(dayDate(center),n*7), value = iso(day);
+   if (value < minimum || value > maximum) continue;
+   const link = document.createElement('a'), url = new URL(document.querySelector('.week-switch a').href,location.href);
+   url.searchParams.set('week',value); link.href=url.href;
+   const label=document.createElement('span'); label.textContent=`${format.format(day)} — ${format.format(addDays(day,6))}`;link.append(label);
+   if(value===selected)link.setAttribute('aria-current','date');
+   if(value===current){const badge=document.createElement('small');badge.textContent='Текущая';link.append(badge)}
+   list.append(link);
+  }
+  document.getElementById('weeks-earlier').disabled = center <= minimum;
+  document.getElementById('weeks-later').disabled = center >= maximum;
+  const target=list.querySelector('[aria-current="date"]') || list.children[Math.floor(list.children.length/2)];
+  if (target) {list.scrollTop=target.offsetTop-list.clientHeight/2+target.clientHeight/2;if(focusSelected)target.focus({preventScroll:true})}
+ }
+ function closeWeeks(){weekPicker.close()}
+ weekToggle.addEventListener('click',()=>{
+  center=selected;dateInput.value=selected;weekPicker.showModal();document.documentElement.classList.add('modal-open');weekToggle.setAttribute('aria-expanded','true');renderWeeks(true);
+ });
+ document.getElementById('week-picker-close').addEventListener('click',closeWeeks);
+ weekPicker.addEventListener('close',()=>{document.documentElement.classList.remove('modal-open');weekToggle.setAttribute('aria-expanded','false')});
+ weekPicker.addEventListener('click',event=>{
+  if(event.target.closest('.week-list a'))closeWeeks();
+  if(event.target!==weekPicker)return;
+  const rect=weekPicker.getBoundingClientRect();
+  if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)closeWeeks();
+ });
+ function shiftWeeks(amount){center=iso(addDays(dayDate(center),amount*7));center=center<minimum?minimum:center>maximum?maximum:center;renderWeeks()}
+ document.getElementById('weeks-earlier').addEventListener('click',()=>shiftWeeks(-16));
+ document.getElementById('weeks-later').addEventListener('click',()=>shiftWeeks(16));
+ document.getElementById('weeks-today').addEventListener('click',()=>{center=current;dateInput.value=current;renderWeeks(true)});
+ dateInput.addEventListener('change',()=>{if(!dateInput.value||!dateInput.checkValidity())return;center=iso(monday(dayDate(dateInput.value)));renderWeeks()});
 }

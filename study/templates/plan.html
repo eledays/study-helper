@@ -5,7 +5,7 @@
   <div class="board-toolbar">
     <div class="week-switch" aria-label="Выбор недели">
       <a aria-label="Предыдущая неделя" href="{{url_for('page',section=section,student=g.student.id,week=week-timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_left</span></a>
-      <time datetime="{{week}}" title="Неделя {{week.strftime('%d.%m.%Y')}} — {{(week+timedelta(days=6)).strftime('%d.%m.%Y')}}"><span class="week-prefix">Неделя: </span><span class="week-range">{{week.strftime('%d.%m')}}–{{(week+timedelta(days=6)).strftime('%d.%m')}}</span></time>
+      <button type="button" class="week-trigger" id="week-picker-toggle" aria-label="Выбрать неделю" aria-haspopup="dialog" aria-controls="week-picker" aria-expanded="false"><time datetime="{{week}}" title="Неделя {{week.strftime('%d.%m.%Y')}} — {{(week+timedelta(days=6)).strftime('%d.%m.%Y')}}"><span class="week-prefix">Неделя: </span><span class="week-range">{{week.strftime('%d.%m')}}–{{(week+timedelta(days=6)).strftime('%d.%m')}}</span></time></button>
       <a aria-label="Следующая неделя" href="{{url_for('page',section=section,student=g.student.id,week=week+timedelta(days=7))}}"><span class="material-symbols-outlined" aria-hidden="true">chevron_right</span></a>
     </div>
 
@@ -13,7 +13,7 @@
   <div id="board-cards" data-editing="{{'true' if request.args.get('edit') == '1' else 'false'}}" class="card-board {{'goals-board' if section == 'goals' else 'schedule-board'}}">
   {% if section == 'goals' %}
     {% for goal in goals %}
-    <article class="board-card goal-card" style="--goal-fill:{{goal.percent}}%">
+    <article class="board-card goal-card" style="--goal-fill:{{goal.percent}}%;--card-order:{{[loop.index0,6]|min}}">
       <strong title="{{goal.label|display_label}}">{{goal.label|display_label}}</strong>
       <div class="numbers">{{goal.done}} <span>из {{goal.target}}</span></div>
     </article>
@@ -21,19 +21,26 @@
   {% else %}
     {% for n in range(7) %}
     {% set day=week+timedelta(days=n) %}
-    <article class="board-card day {{'today' if day == today}}">
+    {% set day_slots=slots|selectattr('day','equalto',day)|list %}
+    <article class="board-card day {{'today' if day == today}} {{'is-empty' if not day_slots}}" style="--card-order:{{n}}">
       <h3>{{['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'][n]}} <span>{{day.strftime('%d.%m')}}</span></h3>
-      {% for slot in slots if slot.day == day %}
+      {% for slot in day_slots %}
       <div class="slot {{slot.kind}}">
         <strong>{{slot.start}}–{{slot.end}}</strong>
         <span>{{slot.title|display_label}}</span>
         <small>{{{'study':'Занятие','rest':'Отдых','exam':'Пробник'}[slot.kind]}}</small>
       </div>
-      {% else %}<p class="muted">Свободный день</p>{% endfor %}
+      {% endfor %}
     </article>
     {% endfor %}
   {% endif %}
   </div>
+  <dialog id="week-picker" class="create-dialog week-picker" aria-labelledby="week-picker-title" data-today="{{today}}">
+    <div class="dialog-heading"><h2 id="week-picker-title">Выбор недели</h2><button type="button" class="quiet dialog-close" id="week-picker-close" aria-label="Закрыть выбор недели"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
+    <label class="week-date-label">Перейти к дате<input type="date" id="week-picker-date" value="{{week}}" min="2000-01-10" max="2099-12-31"></label>
+    <div class="week-list" id="week-options" aria-label="Недели"></div>
+    <div class="week-list-controls"><button type="button" class="quiet" id="weeks-earlier">Раньше</button><button type="button" class="quiet" id="weeks-today">Текущая неделя</button><button type="button" class="quiet" id="weeks-later">Позже</button></div>
+  </dialog>
   <dialog id="board-create" class="create-dialog" aria-labelledby="create-title">
     <div class="dialog-heading"><h2 id="create-title">{{'Новая цель' if section == 'goals' else 'Новый временной слот'}}</h2><button type="button" class="dialog-close quiet" aria-label="Закрыть" title="Закрыть"><span class="material-symbols-outlined" aria-hidden="true">close</span></button></div>
   {% if section == 'goals' %}

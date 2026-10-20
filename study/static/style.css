@@ -80,3 +80,30 @@ html[data-fixed-theme] main{max-width:1200px;padding:clamp(48px,12vh,120px) 24px
  html[data-theme=dark] .week-switch time,html[data-theme=dark] .board-actions .round-action{box-shadow:0 3px 12px rgb(0 0 0 / .3)}
  .board-actions #board-add{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
 }
+
+/* Compact days, week chooser, and short, restrained page motion. */
+.schedule-board{gap:12px;align-items:start;align-content:start}
+.schedule-board .day.is-empty{min-height:0;padding:16px 22px}
+.schedule-board .day.is-empty h3{margin:0}
+.week-trigger{margin:0;padding:0;min-width:0;background:transparent;color:inherit;font:inherit;border-radius:10px}
+.week-trigger:hover{filter:none}
+.week-picker{width:min(430px,calc(100% - 32px))}
+.week-date-label{margin:0 0 16px}
+.week-list{max-height:42dvh;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:4px;position:relative}
+.week-list a{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 10px;border-radius:8px;font-size:13px;font-variant-numeric:tabular-nums;flex:none}
+.week-list a:hover{background:var(--surface);color:var(--ink)}
+.week-list a[aria-current=date]{background:var(--warm)}
+.week-list small{font-size:10px;color:var(--muted)}
+.week-list-controls{display:flex;justify-content:space-between;gap:6px;margin-top:16px}
+.week-list-controls button{font-size:12px;padding:9px 10px;margin:0}
+@media(max-width:750px){.schedule-board{gap:10px}.week-trigger{border-radius:14px}.week-list a{font-size:12px}}
+@media(prefers-reduced-motion:no-preference){
+ main{animation:page-appear 160ms ease-out both}
+ .card-board > .board-card{animation:card-appear 240ms cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--card-order,0)*22ms)}
+ .goal-card::before{animation:goal-fill-in 480ms cubic-bezier(.2,.7,.2,1) 60ms both;transform-origin:left center}
+ html[data-navigation=next]{--entry-x:16px}
+ html[data-navigation=previous]{--entry-x:-16px}
+ @keyframes page-appear{from{opacity:0}to{opacity:1}}
+ @keyframes card-appear{from{opacity:0;transform:translate(var(--entry-x,0px),6px)}to{opacity:1;transform:translate(0,0)}}
+ @keyframes goal-fill-in{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+}
