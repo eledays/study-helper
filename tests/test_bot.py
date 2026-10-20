@@ -291,7 +291,7 @@ def test_commands_route_without_consuming_score_input(db):
     asyncio.run(run())
 
 
-def test_practice_edits_one_message_selection_and_five_custom_moods(db):
+def test_practice_edits_one_message_selection_and_multiple_custom_mood_rows(db):
     async def run():
         h = BotHarness(db)
         await h.text('/practice')
@@ -329,6 +329,7 @@ def test_practice_edits_one_message_selection_and_five_custom_moods(db):
         assert [b.icon_custom_emoji_id for b in final.reply_markup.inline_keyboard[0]] == [
             '5346250607160209995', '5346036820868083187', '5348525299149584089',
             '5348309872179949637', '5348423147647414077']
+        assert [len(row) for row in final.reply_markup.inline_keyboard] == [5, 5, 5]
         assert len([m for m in h.transport.messages if isinstance(m, SendMessage)]) == 1
         with db.session() as s:
             assert s.get(Draft, 1) is None
@@ -409,9 +410,9 @@ def test_custom_mood_confirmation_uses_utf16_offsets():
 def test_mood_buttons_allow_plain_emoji_fallback(monkeypatch):
     import study.bot as bot_module
     original = bot_module.bot_texts
-    monkeypatch.setattr(bot_module, 'bot_texts', lambda key: [''] * 5 if key == 'wellbeing.practice_mood_ids' else original(key))
+    monkeypatch.setattr(bot_module, 'bot_texts', lambda key: [''] * len(original('wellbeing.practice_moods')) if key == 'wellbeing.practice_mood_ids' else original(key))
     buttons = bot_module.mood_buttons('test')
-    assert [b.text for b in buttons] == ['😵', '😞', '😐', '📱', '🤩']
+    assert [b.text for b in buttons] == original('wellbeing.practice_moods')
     assert all(b.icon_custom_emoji_id is None for b in buttons)
     assert bot_module.mood_confirmation(1)[1] is None
 
@@ -558,3 +559,78 @@ def test_reminders_include_result_buttons(db):
         assert daily[2].inline_keyboard[0][0].callback_data == 'daily:2026-10-19:practice'
         button = slot[2].inline_keyboard[0][0]
         assert button.callback_data.startswith('slot:') and button.text == bot_text('buttons.record_exam')
+
+
+def test_study_suppresses_evening_and_rest_even_with_planned_rest(db):
+    from datetime import date
+    from study.services import record_activity, record_exam_total
+    day = date(2026, 10, 18)
+    with db.session.begin() as s:
+        user = s.get(User, 1)
+        user.timezone = 'Asia/Tokyo'
+        user.evening = '01:00'
+        s.add(Slot(student_id=1, day=day, start='01:10', end='02:00',
+                   kind='rest', title='Отдых', series='rest'))
+        # Yesterday's entry and another student's entry must not suppress today.
+        record_activity(s, 1, 1, 1, date(2026, 10, 17), 'practice', {1: 1}, 'yesterday')
+        s.add(Activity(student_id=3, subject_id=1, day=day, kind='practice', request_key='other'))
+        s.flush()
+        now = datetime(2026, 10, 17, 16, tzinfo=ZoneInfo('UTC'))  # Oct 18 locally
+        assert any(':daily:' in key for key, _, _ in due_messages(s, user, now))
+        record_exam_total(s, 1, 1, 1, day, 3, 'today-exam')
+        messages = list(due_messages(s, user, now))
+        assert not any(':daily:' in key for key, _, _ in messages)
+        assert any(':weekly:' in key for key, _, _ in messages)
+        assert not any(markup and any(':rest' in b.callback_data for row in markup.inline_keyboard for b in row)
+                       for _, _, markup in messages)
+        tomorrow = list(due_messages(s, user, datetime(2026, 10, 18, 16, tzinfo=ZoneInfo('UTC'))))
+        assert any(':daily:' in key for key, _, _ in tomorrow)
+
+
+def test_stale_rest_button_after_study_keeps_study_and_removes_keyboard(db, monkeypatch):
+    from datetime import date
+    from study.services import record_activity
+    from study.messages import bot_text
+    monkeypatch.setattr('study.bot.local_day', lambda user: date(2026, 10, 18))
+    async def run():
+        with db.session.begin() as s:
+            record_activity(s, 1, 1, 1, date(2026, 10, 18), 'practice', {1: 1}, 'studied')
+        h = BotHarness(db)
+        await h.press('daily:2026-10-18:rest')
+        assert isinstance(h.transport.messages[-2], EditMessageReplyMarkup)
+        assert h.transport.messages[-2].reply_markup is None
+        assert h.transport.messages[-1].text == bot_text('results.already_studied')
+        await h.text('/rest')
+        assert h.transport.messages[-1].text == bot_text('results.already_studied')
+        with db.session() as s:
+            assert s.scalar(select(Daily)).status == 'study'
+            assert s.get(Delivery, '1:daily:2026-10-18') is None
+    asyncio.run(run())
+
+
+def test_extra_moods_work_in_both_flows_without_changing_five_point_scale(db, monkeypatch):
+    from datetime import date
+    from study.bot import mood_keyboard, mood_options, mood_score
+    from study.services import record_activity
+    monkeypatch.setattr('study.bot.local_day', lambda user: date(2026, 10, 18))
+    rows = mood_keyboard('mood', '2026-10-18').inline_keyboard
+    assert [len(row) for row in rows] == [5, 5, 5, 1]
+    assert len(mood_options()) == 15
+    assert {mood_score(n) for n in range(1, 16)} == {1, 2, 3, 4, 5}
+    async def run():
+        with db.session.begin() as s:
+            record_activity(s, 1, 1, 1, date(2026, 10, 18), 'practice', {1: 1}, 'mood-extra')
+            s.scalar(select(Daily)).wellbeing_asked = True
+        h = BotHarness(db)
+        await h.press('result-feel:1:15')
+        assert h.transport.messages[-1].entities[0].custom_emoji_id == mood_options()[14][1]
+        with db.session() as s:
+            assert s.scalar(select(Daily)).mood == 5
+        await h.press('feel:2026-10-18:mood:8')
+        with db.session() as s:
+            assert s.scalar(select(Daily)).mood == 1
+        before = len(h.transport.messages)
+        await h.press('result-feel:1:16')
+        await h.press('feel:2026-10-18:load:6')
+        assert len(h.transport.messages) == before
+    asyncio.run(run())

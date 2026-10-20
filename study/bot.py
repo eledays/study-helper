@@ -37,6 +37,11 @@ def local_day(user, now=None):
     return (now or datetime.now(ZoneInfo(user.timezone))).astimezone(ZoneInfo(user.timezone)).date()
 
 
+def has_study(s, user_id, day):
+    return s.scalar(select(Activity.id).where(
+        Activity.student_id == user_id, Activity.day == day).limit(1)) is not None
+
+
 def get_user(s, telegram):
     user = s.scalar(select(User).where(User.telegram_id == telegram.id))
     if not user:
@@ -57,8 +62,8 @@ def draft_set(s, user_id, data):
 def mood_options():
     labels = bot_texts('wellbeing.practice_moods')
     ids = bot_texts('wellbeing.practice_mood_ids')
-    if len(labels) != 5 or len(ids) != 5:
-        raise ValueError('Wellbeing requires five emojis and five custom emoji IDs')
+    if len(labels) != len(ids):
+        raise ValueError('Each wellbeing emoji requires a custom emoji ID or an empty fallback')
     return list(zip(labels, ids))
 
 
@@ -66,6 +71,18 @@ def mood_buttons(prefix):
     return [InlineKeyboardButton(text='\u200b' if emoji_id else label,
                 icon_custom_emoji_id=emoji_id or None, callback_data=f'{prefix}:{value}')
             for value, (label, emoji_id) in enumerate(mood_options(), 1)]
+
+
+def mood_rows(prefix):
+    buttons = mood_buttons(prefix)
+    return [buttons[index:index + 5] for index in range(0, len(buttons), 5)]
+
+
+def mood_score(value):
+    scores = bot_texts('wellbeing.practice_mood_scores')
+    if len(scores) != len(mood_options()) or any(score not in ('1', '2', '3', '4', '5') for score in scores):
+        raise ValueError('Each wellbeing emoji requires a score from 1 to 5')
+    return int(scores[value - 1])
 
 
 def mood_confirmation(value):
@@ -80,8 +97,8 @@ def mood_confirmation(value):
 
 def mood_keyboard(kind, day):
     if kind == 'mood':
-        return InlineKeyboardMarkup(inline_keyboard=[mood_buttons(f'feel:{day}:mood'),
-            [InlineKeyboardButton(text=bot_text('buttons.skip'), callback_data=f'feel:{day}:mood:skip')]])
+        return InlineKeyboardMarkup(inline_keyboard=mood_rows(f'feel:{day}:mood') +
+            [[InlineKeyboardButton(text=bot_text('buttons.skip'), callback_data=f'feel:{day}:mood:skip')]])
     labels = bot_texts('wellbeing.mood_labels' if kind == 'mood' else 'wellbeing.load_labels')
     return keyboard([[(bot_text('format.rating_button', number=n, label=label), f'feel:{day}:{kind}:{n}')] for n, label in enumerate(labels, 1)] + [[(bot_text('buttons.skip'), f'feel:{day}:{kind}:skip')]])
 
@@ -157,11 +174,14 @@ def router(db, settings):
         await message.answer(bot_html('goals.heading') + '\n\n' + goal_cards(rows), parse_mode='HTML')
 
     async def mark_day(message, s, user, day):
+        if has_study(s, user.id, day):
+            await message.answer(bot_text('results.already_studied'))
+            return
         daily = s.scalar(select(Daily).where(Daily.student_id == user.id, Daily.day == day))
         if not daily:
             daily = Daily(student_id=user.id, day=day)
             s.add(daily)
-        daily.status = 'study' if s.scalar(select(Activity.id).where(Activity.student_id == user.id, Activity.day == day).limit(1)) else 'rest'
+        daily.status = 'rest'
         await message.answer(bot_text('results.rest_marked'))
         key = f'{user.id}:daily:{day}'
         if not s.get(Delivery, key): s.add(Delivery(key=key))
@@ -231,7 +251,7 @@ def router(db, settings):
             if user.wellbeing and day == local_day(user) and daily and not daily.wellbeing_asked:
                 daily.wellbeing_asked = True
                 text += '\n' + bot_text('wellbeing.practice_question')
-                markup = InlineKeyboardMarkup(inline_keyboard=[mood_buttons(f'result-feel:{activity.id}')])
+                markup = InlineKeyboardMarkup(inline_keyboard=mood_rows(f'result-feel:{activity.id}'))
             await render_step(message, data, text, markup)
             return
         text = bot_text('results.saved')
@@ -374,17 +394,19 @@ def router(db, settings):
                         await subject_menu(call.message, s, user, arg, day)
                         return
                     if arg != 'rest': return
+                    if has_study(s, user.id, day):
+                        await call.message.edit_reply_markup(reply_markup=None)
                     await mark_day(call.message, s, user, day)
                     return
                 if command == 'result-feel':
                     if not user.wellbeing: return
                     activity_id, value = map(int, arg.split(':'))
-                    if value not in range(1, 6): return
+                    if value not in range(1, len(mood_options()) + 1): return
                     activity = s.get(Activity, activity_id)
                     if not activity or activity.student_id != user.id or activity.day != local_day(user): return
                     daily = s.scalar(select(Daily).where(Daily.student_id == user.id, Daily.day == activity.day))
                     if not daily or not daily.wellbeing_asked: return
-                    daily.mood = value
+                    daily.mood = mood_score(value)
                     text, entities = mood_confirmation(value)
                     await render_step(call.message, {'message_id': call.message.message_id, 'chat_id': call.message.chat.id},
                                       text, entities=entities)
@@ -395,10 +417,11 @@ def router(db, settings):
                     day = date.fromisoformat(day_text)
                     if day > local_day(user): return
                     if kind not in ('mood', 'load'): return
-                    if value != 'skip' and value not in ('1','2','3','4','5'): return
+                    allowed = {str(n) for n in range(1, (len(mood_options()) if kind == 'mood' else 5) + 1)}
+                    if value != 'skip' and value not in allowed: return
                     daily = s.scalar(select(Daily).where(Daily.student_id == user.id, Daily.day == day))
                     if not daily: daily = Daily(student_id=user.id, day=day); s.add(daily)
-                    if value != 'skip': setattr(daily, kind, int(value))
+                    if value != 'skip': setattr(daily, kind, mood_score(int(value)) if kind == 'mood' else int(value))
                     if kind == 'mood': await call.message.answer(bot_html('wellbeing.load_question'), reply_markup=mood_keyboard('load',day), parse_mode='HTML')
                     else: await call.message.answer(bot_text('wellbeing.saved') if value != 'skip' else bot_text('wellbeing.finished'))
                     return
@@ -608,7 +631,7 @@ def due_messages(s, user, now):
         rested = any(slot.kind == 'rest' for slot in slots)
         texts = bot_texts('notifications.daily_variants')
         text = bot_text('notifications.rest_day') if rested else texts[day.toordinal() % len(texts)]
-        if not s.get(Delivery, f'{user.id}:daily:{day}'):
+        if not has_study(s, user.id, day) and not s.get(Delivery, f'{user.id}:daily:{day}'):
             yield f'{user.id}:daily:{day}', text, keyboard([
                 [(bot_text('buttons.record_practice'), f'daily:{day}:practice'), (bot_text('buttons.record_exam'), f'daily:{day}:exam')],
                 [(bot_text('buttons.rest_female' if user.gender == 'female' else 'buttons.rest_male' if user.gender == 'male' else 'buttons.rest_neutral'), f'daily:{day}:rest')]])
@@ -631,6 +654,7 @@ async def deliver_due(bot, db, now):
         for key, text, markup in messages:
             with db.session() as s:
                 if not access_allowed(s, user.telegram_id) or s.get(Delivery,key): continue
+                if ':daily:' in key and has_study(s, user.id, date.fromisoformat(key.rsplit(':', 1)[1])): continue
             try:
                 for index, chunk in enumerate(split_text(text, html=':weekly:' in key)):
                     part_key = f'{key}:part:{index}'
