@@ -38,8 +38,11 @@ def test_analytics_and_editing_are_separate(client, db):
     payload = json.loads(re.search(r'id="analytics-data">(.*?)</script>', html, re.S).group(1))
     assert payload['exams'][0]['secondary'] == 60
     editing = client.get('/editing').text
-    assert f'action="/activity/{activity_id}"' in editing
-    assert f'action="/activity/{activity_id}/delete"' in editing
+    assert f'/activity/{activity_id}/editor?' in editing
+    assert 'class="record-form"' not in editing
+    editor = client.get(f'/activity/{activity_id}/editor').json['html']
+    assert f'action="/activity/{activity_id}"' in editor
+    assert f'action="/activity/{activity_id}/delete"' in editor
     settings = client.get('/settings').text
     assert 'action="/scale/' not in settings and 'action="/groups' not in settings
     subjects = client.get('/editing?tab=subjects').text

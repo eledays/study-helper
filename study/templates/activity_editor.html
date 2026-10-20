@@ -1,0 +1,20 @@
+{% from 'macros.html' import hidden with context %}
+      <form action="/activity/{{record.id}}" method="post" class="record-form" {% if record.kind == 'exam' %}data-exam-edit{% endif %}>
+        {{hidden()}}
+        <div class="row"><label>Дата<input name="day" type="date" value="{{record.day}}" max="{{today}}" required></label><label>Название<input name="title" value="{{record.title}}" maxlength="120"></label></div>
+        {% if record.id in record_totals %}
+        <label>Первичный балл<input name="primary" type="number" min="0" max="{{record_totals[record.id].maximum}}" value="{{record_totals[record.id].primary_score}}" required></label>
+        {% else %}
+        <table class="score-editor"><thead><tr><th>Задание</th><th>Результат</th></tr></thead><tbody>
+          {% for score in record_scores.get(record.id, []) %}<tr><td>{% for task in tasks if task.id == score.task_id %}{{task.name}}{% endfor %}</td><td><select name="score_{{score.task_id}}" aria-label="Результат {% for task in tasks if task.id == score.task_id %}{{task.name}}{% endfor %}"><option value="" {{'selected' if not score.attempted}}>Не решалось</option>{% for n in range(score.maximum+1) %}<option value="{{n}}" {{'selected' if score.attempted and score.score == n}}>{{n}} / {{score.maximum}}</option>{% endfor %}</select></td></tr>{% endfor %}
+        </tbody></table>
+        {% endif %}
+        {% if record.kind == 'exam' %}
+        {% set primary = record_totals[record.id].primary_score if record.id in record_totals else record_scores.get(record.id, [])|sum(attribute='score') %}
+        {% set automatic = record.scale_snapshot and record.scale_snapshot.get(primary|string) == record.secondary %}
+        <label>Перевод баллов<select name="conversion"><option value="auto" {{'selected' if automatic}} {{'disabled' if not record.scale_snapshot}}>По сохранённой шкале</option><option value="manual" {{'selected' if not automatic}}>Внести балл вручную</option></select></label>
+        <label data-manual-secondary>Балл по шкале 0–100<input name="secondary" type="number" min="0" max="100" value="{{record.secondary if record.secondary is not none else ''}}"></label>
+        {% endif %}
+        <button>Сохранить</button>
+      </form>
+      <form action="/activity/{{record.id}}/delete" method="post" data-confirm="Удалить запись за {{record.day.strftime('%d.%m.%Y')}}?">{{hidden()}}<button class="quiet">Удалить запись</button></form>

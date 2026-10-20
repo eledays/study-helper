@@ -282,7 +282,7 @@ def create_app(settings=None):
             record_count = g.db.scalar(select(func.count()).select_from(Activity).where(*filters))
             record_page = min(record_page, max(1, (record_count+49)//50))
             records = list(g.db.scalars(select(Activity).where(*filters).order_by(Activity.day.desc(), Activity.id.desc()).offset((record_page-1)*50).limit(50)))
-            ids = [r.id for r in records]
+            ids = [r.id for r in records if str(r.id) == request.args.get('edit_record') and g.user.id == g.student.id]
             if ids:
                 for score in g.db.scalars(select(Score).where(Score.activity_id.in_(ids)).order_by(Score.task_id)):
                     record_scores.setdefault(score.activity_id, []).append(score)
@@ -300,6 +300,25 @@ def create_app(settings=None):
         if request.headers.get('X-Study-Navigation') == '1':
             return jsonify(html=html, url=request.full_path.rstrip('?'), user_id=g.user.id, version=view_version)
         return html
+
+    @app.get('/activity/<int:activity_id>/editor')
+    def activity_editor(activity_id):
+        record = g.db.get(Activity, activity_id)
+        if record is None:
+            abort(404)
+        if record.student_id != g.user.id or record.student_id != g.student.id:
+            abort(403)
+        today = datetime.now(ZoneInfo(g.user.timezone)).date()
+        week = monday(date.fromisoformat(request.args.get('week', today.isoformat())))
+        tasks = sorted(g.db.scalars(select(Task).where(Task.subject_id == record.subject_id)), key=task_order_key)
+        positions = {task.id: index for index, task in enumerate(tasks)}
+        scores = sorted(g.db.scalars(select(Score).where(Score.activity_id == record.id)), key=lambda row: positions[row.task_id])
+        total = g.db.get(ExamTotal, record.id)
+        html = render_template('activity_editor.html', section='editing', tab='works',
+            record=record, record_scores={record.id: scores}, record_totals={record.id: total} if total else {},
+            tasks=tasks, today=today, week=week, record_page=max(1, int(request.args.get('record_page', '1'))),
+            record_subject=request.args.get('record_subject', ''))
+        return jsonify(html=html, user_id=g.user.id, version=view_version)
 
     def back(section='goals'):
         if request.form.get('return_section') == 'editing':

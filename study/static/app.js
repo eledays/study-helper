@@ -7,7 +7,10 @@ window.initializeStudyView = function initializeStudyView() {
   target.addEventListener(type, handler, {...options, signal:lifecycle.signal});
  }
 document.querySelectorAll('.add-row').forEach(button=>button.addEventListener('click',()=>{const body=button.closest('form').querySelector('tbody');const row=body.lastElementChild.cloneNode(true);row.querySelectorAll('input').forEach(i=>i.value='');body.append(row)}));
-document.querySelectorAll('[data-confirm]').forEach(form=>form.addEventListener('submit',event=>{if(!confirm(form.dataset.confirm))event.preventDefault()}));
+function bindConfirmations(root) {
+ root.querySelectorAll('[data-confirm]').forEach(form=>form.addEventListener('submit',event=>{if(!confirm(form.dataset.confirm))event.preventDefault()}));
+}
+bindConfirmations(document);
 const dataNode=document.getElementById('analytics-data');
 function chart(container,rows,series,max){
  const width=Math.min(700,Math.max(280,container.clientWidth)),right=width-20;
@@ -38,7 +41,10 @@ document.querySelectorAll('form:not([data-goal-selection])').forEach(form=>{
  subject.addEventListener('change',sync);kind?.addEventListener('change',sync);sync();
 });
 document.getElementById('student-switch')?.addEventListener('change',event=>{const url=new URL(location.href);url.searchParams.set('student',event.target.value);navigateWithMotion(url.toString())});
-document.querySelectorAll('table').forEach(table=>{const wrapper=document.createElement('div');wrapper.className='table-scroll';table.before(wrapper);wrapper.append(table)});
+function wrapTables(root) {
+ root.querySelectorAll('table').forEach(table=>{if(table.parentElement.classList.contains('table-scroll'))return;const wrapper=document.createElement('div');wrapper.className='table-scroll';table.before(wrapper);wrapper.append(table)});
+}
+wrapTables(document);
 const addButton=document.getElementById('board-add'),createPanel=document.getElementById('board-create');
 if(addButton&&createPanel){
  const label=addButton.getAttribute('aria-label');
@@ -180,12 +186,54 @@ if(dataNode){
 }
 
 // Manual converted scores and historical scales are separate editing modes
-document.querySelectorAll('[data-exam-edit]').forEach(form=>{
- const mode=form.querySelector('[name="conversion"]'),label=form.querySelector('[data-manual-secondary]'),input=label.querySelector('input');
- const sync=()=>{const manual=mode.value==='manual';label.hidden=!manual;input.disabled=!manual};
- mode.addEventListener('change',sync);sync();
-});
+function bindExamEditors(root) {
+ root.querySelectorAll('[data-exam-edit]').forEach(form=>{
+  const mode=form.querySelector('[name="conversion"]'),label=form.querySelector('[data-manual-secondary]'),input=label.querySelector('input');
+  const sync=()=>{const manual=mode.value==='manual';label.hidden=!manual;input.disabled=!manual};
+  mode.addEventListener('change',sync);sync();
+ });
+}
+bindExamEditors(document);
 
+
+// History stays a list of summaries; only expanded records allocate editor controls.
+document.querySelectorAll('.record-editor noscript').forEach(node=>node.remove());
+document.querySelectorAll('.record-editor-body[data-editor-url]').forEach(body=>{
+ const details=body.closest('details');
+ let controller,request=0,dirty=false,loaded=false;
+ body.addEventListener('input',()=>dirty=true);
+ body.addEventListener('change',()=>dirty=true);
+ function unload() {
+  request++;controller?.abort();controller=null;
+  if(!dirty){body.replaceChildren();loaded=false;body.removeAttribute('aria-busy')}
+ }
+ async function load() {
+  if(loaded||controller||lifecycle.signal.aborted)return;
+  const ownRequest=++request;controller=new AbortController();
+  const active=controller,stop=()=>active.abort();lifecycle.signal.addEventListener('abort',stop,{once:true});
+  const timeout=setTimeout(()=>active.abort(),12000);
+  body.setAttribute('aria-busy','true');body.textContent='Загрузка формы…';
+  try{
+   const response=await fetch(body.dataset.editorUrl,{signal:active.signal,credentials:'same-origin',cache:'no-store'});
+   if(!response.ok||!response.headers.get('Content-Type')?.includes('application/json'))throw new Error('editor-unavailable');
+   const data=await response.json();
+   if(String(data.user_id)!==document.body.dataset.userId||data.version!==document.body.dataset.viewVersion||typeof data.html!=='string')throw new Error('editor-version');
+   if(ownRequest!==request||lifecycle.signal.aborted||!details.open)return;
+   const template=document.createElement('template');template.innerHTML=data.html;
+   if(template.content.querySelector('script'))throw new Error('editor-markup');
+   body.replaceChildren(template.content);bindConfirmations(body);bindExamEditors(body);wrapTables(body);loaded=true;
+  }catch(error){
+   if(ownRequest!==request||lifecycle.signal.aborted)return;
+   body.replaceChildren();const message=document.createElement('p');message.className='muted';message.setAttribute('role','alert');message.textContent='Не удалось загрузить форму. Проверьте подключение и повторите.';
+   const retry=document.createElement('button');retry.type='button';retry.className='quiet';retry.textContent='Повторить';retry.addEventListener('click',load);body.append(message,retry);
+  }finally{
+   clearTimeout(timeout);lifecycle.signal.removeEventListener('abort',stop);
+   if(ownRequest===request){controller=null;body.removeAttribute('aria-busy')}
+  }
+ }
+ details.addEventListener('toggle',()=>{if(details.open)load();else unload()});
+ if(details.open)load();
+});
 
 const installButton = document.getElementById('install-app');
 if (installButton) installButton.hidden = !window.studyInstallPrompt;
