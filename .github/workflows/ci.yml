@@ -35,6 +35,7 @@ jobs:
           NODE_PATH=/tmp/study-browser-tools/node_modules node tests/browser_smoke.cjs
           NODE_PATH=/tmp/study-browser-tools/node_modules node tests/browser_spa.cjs
           NODE_PATH=/tmp/study-browser-tools/node_modules node tests/browser_history.cjs
+          NODE_PATH=/tmp/study-browser-tools/node_modules node tests/browser_audit.cjs
       - run: docker build --pull -t study-helper:ci .
       - run: bash deploy/smoke.sh study-helper:ci
   dependencies:

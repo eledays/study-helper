@@ -86,3 +86,59 @@ def test_history_is_summaries_only_and_single_editor_enforces_access(client, db)
     assert client.get(f'/activity/{record_id}/editor?student=1').status_code == 403
     with client.session_transaction() as state: state.clear()
     assert client.get(f'/activity/{record_id}/editor').status_code == 302
+
+
+def test_spa_escapes_stored_html_in_views_and_lazy_editors(client, db):
+    from datetime import date
+    from html.parser import HTMLParser
+    from study.models import User, Subject, Task
+    from study.services import record_activity
+
+    payload = '\"><img src=x onerror=alert(1)><script>alert(2)</script>'
+    with db.session.begin() as s:
+        s.get(User, 1).name = payload
+        s.get(Subject, 1).name = payload
+        s.get(Task, 1).name = payload
+        record = record_activity(s, 1, 1, 1, date.today(), 'practice', {1: 1}, payload)
+        record_id = record.id
+
+    class Elements(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.elements = []
+        def handle_starttag(self, tag, attrs):
+            self.elements.append((tag, dict(attrs)))
+
+    views = [client.get('/'+section, headers=HEADERS).json['html']
+             for section in ('goals', 'schedule', 'analytics', 'editing', 'settings')]
+    views.append(client.get(f'/activity/{record_id}/editor').json['html'])
+    for html in views:
+        parsed = Elements()
+        parsed.feed(html)
+        assert not any(tag == 'img' and attrs.get('src') == 'x' for tag, attrs in parsed.elements)
+        assert not any(any(key.startswith('on') for key in attrs) for _, attrs in parsed.elements)
+        assert all(attrs.get('type') == 'application/json' for tag, attrs in parsed.elements if tag == 'script')
+        assert '<script>alert(2)</script>' not in html
+    assert '\\u003c' in views[2]  # Analytics data cannot close its JSON script element.
+
+    assert client.post(f'/activity/{record_id}/delete', headers=HEADERS).status_code == 400
+    with client.session_transaction() as state:
+        state['user_id'] = 2  # The teacher can read this student's plan, but cannot alter results.
+    assert client.post(f'/activity/{record_id}/delete', data={'csrf': 'test-csrf', 'student': 1}, headers=HEADERS).status_code == 403
+
+
+def test_view_version_changes_when_only_a_template_changes(client, db, monkeypatch):
+    from pathlib import Path
+    from study.config import Settings
+    from study.web import create_app
+
+    original = client.get('/goals', headers=HEADERS).json['version']
+    read_bytes = Path.read_bytes
+    def changed_template(path):
+        data = read_bytes(path)
+        return data + b'<!-- template-only deployment -->' if path.name == 'settings.html' else data
+    monkeypatch.setattr(Path, 'read_bytes', changed_template)
+    updated = create_app(Settings(secret_key='test-secret-that-is-long-enough', database_url=str(db.engine.url))).test_client()
+    with updated.session_transaction() as state:
+        state['user_id'] = 1
+    assert updated.get('/goals', headers=HEADERS).json['version'] != original
