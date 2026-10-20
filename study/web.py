@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from datetime import date, datetime, UTC, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from uuid import uuid4
+from pathlib import Path
 from flask import Flask, request, session, g, redirect, url_for, render_template, abort, flash, jsonify, Response
 from sqlalchemy import select, delete, func, text
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError
@@ -45,6 +46,7 @@ def create_app(settings=None):
         raise RuntimeError('Задайте SECRET_KEY длиной не менее 24 символов')
     setup_logging()
     app = Flask(__name__)
+    view_version = hashlib.sha256(b''.join((Path(app.static_folder)/name).read_bytes() for name in ('navigation.js','app.js','style.css'))).hexdigest()[:16]
     app.config.update(SECRET_KEY=settings.secret_key, SESSION_COOKIE_HTTPONLY=True,
                       SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=settings.cookie_secure,
                       MAX_CONTENT_LENGTH=128 * 1024, PERMANENT_SESSION_LIFETIME=timedelta(days=7))
@@ -91,6 +93,9 @@ def create_app(settings=None):
             "font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data:; "
             "frame-src https://oauth.telegram.org https://telegram.org; "
             "frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'")
+        if request.endpoint == 'page':
+            response.vary.add('X-Study-Navigation')
+            response.vary.add('X-Study-Prefetch')
         if request.endpoint != 'static':
             response.headers['Cache-Control'] = 'no-store'
         if settings.environment == 'production':
@@ -136,7 +141,7 @@ def create_app(settings=None):
     def common():
         pupils = list(g.db.scalars(select(User).where(User.teacher_id == g.user.id))) if g.user and g.user.is_teacher else []
         avatar = g.db.get(UserAvatar, g.user.id) if g.user else None
-        return {'avatar_url': avatar.photo_url if avatar else '', 'avatar_fallback_url': url_for('profile_avatar') if settings.bot_token else '', 'csrf': session['csrf'], 'pupils': pupils, 'bot_username': settings.bot_username, 'base_url': settings.base_url.rstrip('/'), 'debug_login_enabled': settings.debug}
+        return {'view_version': view_version, 'avatar_url': avatar.photo_url if avatar else '', 'avatar_fallback_url': url_for('profile_avatar') if settings.bot_token else '', 'csrf': session['csrf'], 'pupils': pupils, 'bot_username': settings.bot_username, 'base_url': settings.base_url.rstrip('/'), 'debug_login_enabled': settings.debug}
 
     @app.get('/profile/avatar')
     def profile_avatar():
@@ -286,12 +291,15 @@ def create_app(settings=None):
                     rows.sort(key=lambda row: positions[row.task_id])
                 record_totals = {r.activity_id: r for r in g.db.scalars(select(ExamTotal).where(ExamTotal.activity_id.in_(ids)))}
 
-        return render_template('plan.html' if section in ('goals','schedule') else f'{section}.html', section=section, subjects=subjects, tasks=tasks,
+        html = render_template('plan.html' if section in ('goals','schedule') else f'{section}.html', section=section, subjects=subjects, tasks=tasks,
                                slots=slots, goals=goals, week=week, today=today, timedelta=timedelta,
                                invite=invite, data=data, tab=tab, records=records, record_scores=record_scores, record_totals=record_totals, groups=groups, memberships=memberships, catalog=CATALOG,
                                catalog_by_name={item["label"]: item for item in CATALOG.values()},
                                period=period, record_page=record_page, record_subject=record_subject,
                                record_pages=max(1, (record_count+49)//50), record_count=record_count)
+        if request.headers.get('X-Study-Navigation') == '1':
+            return jsonify(html=html, url=request.full_path.rstrip('?'), user_id=g.user.id, version=view_version)
+        return html
 
     def back(section='goals'):
         if request.form.get('return_section') == 'editing':

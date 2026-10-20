@@ -1,3 +1,5 @@
+{% set partial = request.endpoint == 'page' and request.headers.get('X-Study-Navigation') == '1' %}
+{% if not partial %}
 <!doctype html>
 <html lang="ru"{% if request.endpoint == 'login' %} data-theme="dark" data-fixed-theme="dark"{% endif %}>
 <head>
@@ -17,7 +19,8 @@
   <link rel="stylesheet" href="{{url_for('static',filename='style.css')}}">
   <script defer src="{{url_for('static',filename='app.js')}}"></script>
 </head>
-<body>
+<body data-user-id="{{g.user.id if g.user else ''}}" data-view-version="{{view_version}}">
+{% endif %}
 {% if request.endpoint != 'login' %}<header>
   {% if g.user %}
   <nav aria-label="Разделы">
@@ -44,8 +47,10 @@
 </header>
 {% endif %}
 <main class="{{'board-page' if section in ('goals','schedule')}}">
-  {% for category,message in get_flashed_messages(with_categories=true) %}<p class="notice {{category}}" role="status">{{message.rstrip('.')|display_label}}</p>{% endfor %}
+  {% for category,message in ([] if request.headers.get('X-Study-Prefetch') == '1' else get_flashed_messages(with_categories=true)) %}<p class="notice {{category}}" role="status">{{message.rstrip('.')|display_label}}</p>{% endfor %}
   {% block content %}{% endblock %}
 </main>
+{% if not partial %}
 </body>
 </html>
+{% endif %}

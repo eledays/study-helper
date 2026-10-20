@@ -1,3 +1,11 @@
+// Each view has its own listener lifetime; the document and router persist.
+window.initializeStudyView = function initializeStudyView() {
+ window.disposeStudyView?.();
+ const lifecycle = new AbortController();
+ window.disposeStudyView = () => lifecycle.abort();
+ function onGlobal(target, type, handler, options = {}) {
+  target.addEventListener(type, handler, {...options, signal:lifecycle.signal});
+ }
 document.querySelectorAll('.add-row').forEach(button=>button.addEventListener('click',()=>{const body=button.closest('form').querySelector('tbody');const row=body.lastElementChild.cloneNode(true);row.querySelectorAll('input').forEach(i=>i.value='');body.append(row)}));
 document.querySelectorAll('[data-confirm]').forEach(form=>form.addEventListener('submit',event=>{if(!confirm(form.dataset.confirm))event.preventDefault()}));
 const dataNode=document.getElementById('analytics-data');
@@ -17,7 +25,7 @@ const themeButton=document.getElementById('theme-toggle');
 function updateThemeButton(){const dark=document.documentElement.dataset.theme==='dark';if(themeButton){themeButton.textContent=dark?'Светлая тема':'Тёмная тема';themeButton.setAttribute('aria-pressed',String(dark));}}
 updateThemeButton();
 themeButton?.addEventListener('click',()=>{document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('theme',document.documentElement.dataset.theme)}catch(e){}updateThemeButton()});
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change',event=>{if(document.documentElement.dataset.fixedTheme)return;try{if(localStorage.getItem('theme'))return}catch(e){}document.documentElement.dataset.theme=event.matches?'dark':'light';updateThemeButton()});
+onGlobal(matchMedia('(prefers-color-scheme: dark)'),'change',event=>{if(document.documentElement.dataset.fixedTheme)return;try{if(localStorage.getItem('theme'))return}catch(e){}document.documentElement.dataset.theme=event.matches?'dark':'light';updateThemeButton()});
 document.querySelectorAll('form:not([data-goal-selection])').forEach(form=>{
  const subject=form.querySelector('select[name="subject_id"]');if(!subject)return;
  const task=form.querySelector('select[name="task_id"]'),kind=form.querySelector('select[name="kind"]'),fieldset=form.querySelector('fieldset');
@@ -29,7 +37,7 @@ document.querySelectorAll('form:not([data-goal-selection])').forEach(form=>{
  }
  subject.addEventListener('change',sync);kind?.addEventListener('change',sync);sync();
 });
-document.getElementById('student-switch')?.addEventListener('change',event=>{const url=new URL(location.href);url.searchParams.set('student',event.target.value);location.href=url.toString()});
+document.getElementById('student-switch')?.addEventListener('change',event=>{const url=new URL(location.href);url.searchParams.set('student',event.target.value);navigateWithMotion(url.toString())});
 document.querySelectorAll('table').forEach(table=>{const wrapper=document.createElement('div');wrapper.className='table-scroll';table.before(wrapper);wrapper.append(table)});
 const addButton=document.getElementById('board-add'),createPanel=document.getElementById('board-create');
 if(addButton&&createPanel){
@@ -161,13 +169,13 @@ if(dataNode){
  }
  function wellbeing(){const container=document.getElementById('wellbeing-chart');if(container)draw(container,data.wellbeing.filter(inPeriod),[['mood','Самочувствие','var(--accent)'],['load','Нагрузка','var(--muted)']],5,'Самочувствие и нагрузка по датам')}
  function render(){rhythm();exams();taskPicker();wellbeing()}
- period.addEventListener('change',()=>{const url=new URL(location.href);url.searchParams.set('period',period.value);location.href=url.toString()});
+ period.addEventListener('change',()=>{const url=new URL(location.href);url.searchParams.set('period',period.value);navigateWithMotion(url.toString())});
  document.getElementById('rhythm-subject').addEventListener('change',rhythm);
  document.getElementById('exam-subject').addEventListener('change',exams);
  document.getElementById('task-subject').addEventListener('change',taskPicker);
  document.getElementById('task-kind').addEventListener('change',taskPicker);
  document.getElementById('task-number').addEventListener('change',event=>{selectedTask=Number(event.target.value);taskPicker()});
- window.addEventListener('resize',render);
+ onGlobal(window,'resize',render);
  render();
 }
 
@@ -178,17 +186,13 @@ document.querySelectorAll('[data-exam-edit]').forEach(form=>{
  mode.addEventListener('change',sync);sync();
 });
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', {updateViaCache:'none'}).catch(() => {});
-let installPrompt;
+
 const installButton = document.getElementById('install-app');
-window.addEventListener('beforeinstallprompt', event => {
- event.preventDefault(); installPrompt = event; if (installButton) installButton.hidden = false;
-});
+if (installButton) installButton.hidden = !window.studyInstallPrompt;
 installButton?.addEventListener('click', async () => {
- if (!installPrompt) return;
- await installPrompt.prompt(); installPrompt = null; installButton.hidden = true;
+ if (!window.studyInstallPrompt) return;
+ await window.studyInstallPrompt.prompt(); window.studyInstallPrompt = null; installButton.hidden = true;
 });
-window.addEventListener('appinstalled', () => { installPrompt = null; if (installButton) installButton.hidden = true; });
 
 // Keep desktop controls in the header and place them in mobile settings.
 const settingsLayout = matchMedia('(max-width: 750px)');
@@ -202,7 +206,7 @@ function syncSettingsControls() {
   else marker.after(node);
  });
 }
-settingsLayout.addEventListener('change', syncSettingsControls); syncSettingsControls();
+onGlobal(settingsLayout,'change', syncSettingsControls); syncSettingsControls();
 const currentSection = document.querySelector('header nav [aria-current="page"]');
 if (settingsLayout.matches && currentSection) currentSection.scrollIntoView({block:'nearest', inline:'center'});
 
@@ -241,7 +245,7 @@ if (planningBoard) {
   if (mobileWeek.matches) planningBoard.tabIndex = 0;
   else planningBoard.removeAttribute('tabindex');
  }
- mobileWeek.addEventListener('change', syncWeekKeyboard); syncWeekKeyboard();
+ onGlobal(mobileWeek,'change', syncWeekKeyboard); syncWeekKeyboard();
  planningBoard.addEventListener('keydown', event => {
   if (event.target !== planningBoard || !['ArrowLeft','ArrowRight'].includes(event.key) || !mobileWeek.matches) return;
   event.preventDefault(); moveWeek(event.key === 'ArrowRight');
@@ -296,3 +300,15 @@ if (weekPicker && weekToggle) {
  document.getElementById('weeks-today').addEventListener('click',()=>{center=current;dateInput.value=current;renderWeeks(true)});
  dateInput.addEventListener('change',()=>{if(!dateInput.value||!dateInput.checkValidity())return;center=iso(monday(dayDate(dateInput.value)));renderWeeks()});
 }
+
+};
+window.initializeStudyView();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', {updateViaCache:'none'}).catch(() => {});
+window.addEventListener('beforeinstallprompt', event => {
+ event.preventDefault(); window.studyInstallPrompt = event;
+ const button = document.getElementById('install-app'); if (button) button.hidden = false;
+});
+window.addEventListener('appinstalled', () => {
+ window.studyInstallPrompt = null;
+ const button = document.getElementById('install-app'); if (button) button.hidden = true;
+});
