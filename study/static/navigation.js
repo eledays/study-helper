@@ -5,7 +5,7 @@ function resetPlanningWeek(refresh = false) {
  const selected = url.searchParams.has('week');
  if (!selected && !refresh) return;
  url.searchParams.delete('week'); url.searchParams.delete('edit');
- if (window.StudyRouter?.ready) window.StudyRouter.navigate(url.href,'section',{replace:true,force:true});
+ if (window.StudyRouter?.ready) window.StudyRouter.navigate(url.href,'section',{replace:true,force:true,preserve:true});
  else if (selected) location.replace(url.href);
  else location.reload();
 }
@@ -19,8 +19,9 @@ window.StudyRouter = (() => {
  const cache = new Map(), prefetches = new Map();
  const MAX_ENTRIES = 10, MAX_BYTES = 2000000, TTL = 10000;
  let ready = false, sequence = 0, epoch = 0, activeRequest, idleTask, loadingTimer;
- let user, version, currentHTML = '', renderedURL = '', mutation = false;
+ let user, version, currentHTML = '', renderedURL = '', mutation = false, pendingPop;
  const dirtyViews = new WeakSet();
+ const editing = () => dirtyViews.has(document.querySelector('main'))||Boolean(document.querySelector('dialog[open]'));
  const appURL = value => {const url=new URL(value,location.href);return url.origin===location.origin&&routes.has(url.pathname)?url:null};
  const canonical = value => {const url=new URL(value,location.href);url.hash='';return url.href};
  const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -58,25 +59,33 @@ window.StudyRouter = (() => {
   document.querySelector('main')?.prepend(banner);
  }
  function hardNavigate(url) {clearCache();location.assign(url)}
- async function readView(response) {
+ async function readView(response,isCurrent=()=>true,preserve=false) {
+  if(!isCurrent())return null;
   const destination=appURL(response.url);
   if(!destination){hardNavigate(response.url);return null}
   if(response.status===401||response.status===403){hardNavigate(response.url);return null}
   if(!response.ok)throw new Error('view-unavailable');
   if(!response.headers.get('Content-Type')?.includes('application/json'))throw new Error('unexpected-view');
   const data=await response.json();
-  if(!data||typeof data.html!=='string'||!appURL(data.url)||String(data.user_id)!==user||data.version!==version){hardNavigate(response.url);return null}
+  if(!isCurrent())return null;
+  if(!data||typeof data.html!=='string'||!appURL(data.url)||String(data.user_id)!==user){hardNavigate(response.url);return null}
+  if(data.version!==version){
+   if(preserve&&editing())notice('Приложение обновилось. Введённые данные оставлены на экране; обновите страницу после завершения работы.');
+   else hardNavigate(response.url);
+   return null;
+  }
   return data;
  }
- async function fetchView(url,signal,prefetch=false) {
+ async function fetchView(url,signal,prefetch=false,preserve=false) {
   const response=await fetch(url,{signal,credentials:'same-origin',cache:'no-store',headers:{'X-Study-Navigation':'1',...(prefetch?{'X-Study-Prefetch':'1'}:{})}});
+  if(signal.aborted)return null;
   // A background request must never navigate, reveal notices, or change accounts.
   if(prefetch){
    if(!response.ok||!appURL(response.url)||!response.headers.get('Content-Type')?.includes('application/json'))return null;
    const data=await response.json();
    return String(data.user_id)===user&&data.version===version&&typeof data.html==='string'&&appURL(data.url)?data:null;
   }
-  return readView(response);
+  return readView(response,()=>!signal.aborted,preserve);
  }
  function snapshotScroll() {
   if(location.href===renderedURL)history.replaceState({...history.state,study:true,scroll:[scrollX,scrollY]},'',location.href);
@@ -124,7 +133,10 @@ window.StudyRouter = (() => {
  async function navigate(destination,direction='section',options={}) {
   const url=appURL(destination);if(!url){hardNavigate(destination);return}
   if(!ready){location.assign(url.href);return}
-  if(mutation){announce('Дождитесь сохранения');return}
+  if(mutation){
+   if(options.pop)pendingPop={url:url.href,scroll:options.scroll||[0,0]};
+   announce('Дождитесь сохранения');return;
+  }
   const key=canonical(url.href),requestID=++sequence;
   activeRequest?.abort();activeRequest=new AbortController();const controller=activeRequest;
   const timeout=setTimeout(()=>controller.abort('timeout'),15000);
@@ -135,10 +147,14 @@ window.StudyRouter = (() => {
   try{
    if(cached){render(cached,direction,{historyMode:mode,scroll});committed=true}
    busy(!cached);
-   const data=await fetchView(key,controller.signal);
+   const data=await fetchView(key,controller.signal,false,options.preserve);
    if(!data||requestID!==sequence)return;
    putCache(canonical(new URL(data.url,location.href).href),data);
-   if(!committed){render(data,direction,{historyMode:mode,scroll});committed=true}
+   if(!committed){
+    if(options.preserve&&editing()){
+     notice('Экран не обновлён, чтобы сохранить введённые данные. Завершите редактирование перед обновлением.');
+    }else{render(data,direction,{historyMode:mode,scroll});committed=true}
+   }
    else if(currentHTML!==data.html){
     if(dirtyViews.has(document.querySelector('main'))||document.querySelector('dialog[open]'))notice('Данные обновились. Сохраните изменения перед обновлением экрана.',()=>navigate(location.href,'section',{replace:true,force:true}));
     else render(data,direction,{historyMode:'replace',scroll:[scrollX,scrollY],focus:false});
@@ -159,13 +175,23 @@ window.StudyRouter = (() => {
   mutation=true;form.dataset.submitting='true';activeRequest?.abort();const requestID=++sequence;clearCache();busy(true);
   const buttons=[...form.querySelectorAll('button:not([type]),button[type="submit"],input[type="submit"]')].map(button=>({button,disabled:button.disabled}));
   buttons.forEach(({button})=>button.disabled=true);
+  let saved=false;
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
   try{
    const response=await fetch(url.href,{method:'POST',signal:controller.signal,body:new URLSearchParams(data),credentials:'same-origin',cache:'no-store',headers:{'X-Study-Navigation':'1'}});
-   const view=await readView(response);if(!view||requestID!==sequence)return;
+   const view=await readView(response,()=>!controller.signal.aborted&&requestID===sequence);if(!view)return;
+   saved=true;if(pendingPop)return;
    render(view,'section',{historyMode:'push'});putCache(canonical(new URL(view.url,location.href).href),view);
   }catch(_){notice('Не удалось подтвердить сохранение. Проверьте подключение и обновите страницу, прежде чем повторять отправку.');}
-  finally{clearTimeout(timeout);mutation=false;delete form.dataset.submitting;buttons.forEach(({button,disabled})=>button.disabled=disabled);busy(false);schedulePrefetch()}
+  finally{
+   clearTimeout(timeout);mutation=false;delete form.dataset.submitting;buttons.forEach(({button,disabled})=>button.disabled=disabled);busy(false);
+   const pop=pendingPop;pendingPop=null;
+   if(pop&&saved)navigate(pop.url,'section',{pop:true,scroll:pop.scroll,force:true});
+   else{
+    if(pop)history.replaceState({study:true,scroll:[scrollX,scrollY]},'',renderedURL);
+    schedulePrefetch();
+   }
+  }
  }
  document.addEventListener('click',event=>{
   const link=event.target.closest('a[href]');
@@ -194,7 +220,7 @@ window.StudyRouter = (() => {
  let wasHidden=document.hidden;
  document.addEventListener('visibilitychange',()=>{
   if(document.hidden){wasHidden=true;clearCache()}
-  else if(wasHidden){wasHidden=false;if(standalone())resetPlanningWeek(true);else if(ready)navigate(location.href,'section',{replace:true,force:true,scroll:[scrollX,scrollY]})}
+  else if(wasHidden){wasHidden=false;if(standalone())resetPlanningWeek(true);else if(ready)navigate(location.href,'section',{replace:true,force:true,preserve:true,scroll:[scrollX,scrollY]})}
  });
  window.addEventListener('pageshow',event=>{if(event.persisted&&standalone())resetPlanningWeek(true)});
  document.addEventListener('DOMContentLoaded',()=>{

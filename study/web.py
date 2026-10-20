@@ -46,7 +46,9 @@ def create_app(settings=None):
         raise RuntimeError('Задайте SECRET_KEY длиной не менее 24 символов')
     setup_logging()
     app = Flask(__name__)
-    view_version = hashlib.sha256(b''.join((Path(app.static_folder)/name).read_bytes() for name in ('navigation.js','app.js','style.css'))).hexdigest()[:16]
+    view_files = [Path(app.static_folder)/name for name in ('navigation.js','app.js','style.css')]
+    view_files += sorted((Path(app.root_path)/app.template_folder).rglob('*.html'))
+    view_version = hashlib.sha256(b''.join(path.read_bytes() for path in view_files)).hexdigest()[:16]
     app.config.update(SECRET_KEY=settings.secret_key, SESSION_COOKIE_HTTPONLY=True,
                       SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_SECURE=settings.cookie_secure,
                       MAX_CONTENT_LENGTH=128 * 1024, PERMANENT_SESSION_LIFETIME=timedelta(days=7))
