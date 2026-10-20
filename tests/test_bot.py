@@ -91,7 +91,7 @@ def test_delivery_persists_across_restart(db):
         assert len(transport.messages)==2
     asyncio.run(run())
 
-def test_optional_wellbeing_asked_once_and_dated(db):
+def test_optional_wellbeing_is_dated(db):
     async def run():
         transport=FakeSession();bot=Bot('123456:ABCDEF_fake_token',session=transport)
         dp=router(db,Settings())
@@ -329,7 +329,7 @@ def test_practice_edits_one_message_selection_and_multiple_custom_mood_rows(db):
         assert [b.icon_custom_emoji_id for b in final.reply_markup.inline_keyboard[0]] == [
             '5346250607160209995', '5346036820868083187', '5348525299149584089',
             '5348309872179949637', '5348423147647414077']
-        assert [len(row) for row in final.reply_markup.inline_keyboard] == [5, 5, 5]
+        assert [len(row) for row in final.reply_markup.inline_keyboard] == [5, 5, 2]
         assert len([m for m in h.transport.messages if isinstance(m, SendMessage)]) == 1
         with db.session() as s:
             assert s.get(Draft, 1) is None
@@ -614,23 +614,90 @@ def test_extra_moods_work_in_both_flows_without_changing_five_point_scale(db, mo
     from study.services import record_activity
     monkeypatch.setattr('study.bot.local_day', lambda user: date(2026, 10, 18))
     rows = mood_keyboard('mood', '2026-10-18').inline_keyboard
-    assert [len(row) for row in rows] == [5, 5, 5, 1]
-    assert len(mood_options()) == 15
-    assert {mood_score(n) for n in range(1, 16)} == {1, 2, 3, 4, 5}
+    assert [len(row) for row in rows] == [5, 5, 2, 1]
+    assert len(mood_options()) == 12
+    assert {mood_score(n) for n in range(1, 13)} == {1, 2, 3, 4, 5}
     async def run():
         with db.session.begin() as s:
             record_activity(s, 1, 1, 1, date(2026, 10, 18), 'practice', {1: 1}, 'mood-extra')
             s.scalar(select(Daily)).wellbeing_asked = True
         h = BotHarness(db)
-        await h.press('result-feel:1:15')
-        assert h.transport.messages[-1].entities[0].custom_emoji_id == mood_options()[14][1]
+        await h.press('result-feel:1:12')
+        assert h.transport.messages[-1].entities[0].custom_emoji_id == mood_options()[11][1]
         with db.session() as s:
-            assert s.scalar(select(Daily)).mood == 5
+            assert s.scalar(select(Daily)).mood == 4
         await h.press('feel:2026-10-18:mood:8')
         with db.session() as s:
             assert s.scalar(select(Daily)).mood == 1
         before = len(h.transport.messages)
-        await h.press('result-feel:1:16')
+        await h.press('result-feel:1:13')
         await h.press('feel:2026-10-18:load:6')
         assert len(h.transport.messages) == before
+    asyncio.run(run())
+
+
+def test_moods_keep_original_five_and_exact_seven_from_reference():
+    from study.bot import mood_options
+    assert mood_options() == [
+        ('😵', '5346250607160209995'),
+        ('😞', '5346036820868083187'),
+        ('😐', '5348525299149584089'),
+        ('📱', '5348309872179949637'),
+        ('🤩', '5348423147647414077'),
+        ('😇', '5388851636149970830'),
+        ('🕺', '5388825771856914958'),
+        ('😵', '5386384495266000639'),
+        ('😎', '5388961101981444010'),
+        ('🥹', '5388943402421216702'),
+        ('😢', '5388605319775543597'),
+        ('😋', '5389071993742062038'),
+    ]
+
+
+def test_wellbeing_is_asked_after_every_practice_and_exam(db, monkeypatch):
+    from datetime import date
+    monkeypatch.setattr('study.bot.local_day', lambda user: date(2026, 10, 18))
+    async def run():
+        h = BotHarness(db)
+        for number in range(2):
+            await h.text('/practice')
+            await h.press('sub:1')
+            await h.press('type:test')
+            await h.next_exceptions()
+            await h.next_exceptions()
+            final = h.transport.messages[-1]
+            assert 'Как ты себя чувствуешь?' in final.text
+            assert [len(row) for row in final.reply_markup.inline_keyboard] == [5, 5, 2]
+            await h.press(final.reply_markup.inline_keyboard[0][number].callback_data)
+            with db.session() as s:
+                assert s.scalar(select(Daily)).mood == number + 1
+        await h.text('/exam')
+        await h.press('sub:1')
+        await h.press(f"exam-total:{h.draft()['key'][:8]}")
+        await h.text('3')
+        final = h.transport.messages[-1]
+        assert 'Как ты себя чувствуешь?' in final.text
+        assert [len(row) for row in final.reply_markup.inline_keyboard] == [5, 5, 2]
+        with db.session() as s:
+            assert len(list(s.scalars(select(Activity)))) == 3
+    asyncio.run(run())
+
+
+def test_wellbeing_after_backdated_entry_can_be_answered(db, monkeypatch):
+    from datetime import date
+    monkeypatch.setattr('study.bot.local_day', lambda user: date(2026, 10, 18))
+    async def run():
+        h = BotHarness(db)
+        await h.press('daily:2026-10-17:practice')
+        await h.press('sub:1')
+        await h.press('type:test')
+        await h.next_exceptions()
+        await h.next_exceptions()
+        final = h.transport.messages[-1]
+        assert 'Как ты себя чувствуешь?' in final.text
+        await h.press(final.reply_markup.inline_keyboard[0][2].callback_data)
+        with db.session() as s:
+            daily = s.scalar(select(Daily))
+            assert daily.day == date(2026, 10, 17)
+            assert daily.mood == 3
     asyncio.run(run())

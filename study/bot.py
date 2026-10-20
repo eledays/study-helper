@@ -119,7 +119,6 @@ def router(db, settings):
         daily = s.scalar(select(Daily).where(Daily.student_id == user.id, Daily.day == day))
         if not daily:
             daily=Daily(student_id=user.id,day=day);s.add(daily)
-        if daily.wellbeing_asked: return
         daily.wellbeing_asked=True
         await message.answer(bot_html('wellbeing.mood_question'),reply_markup=mood_keyboard('mood',day), parse_mode='HTML')
 
@@ -248,7 +247,7 @@ def router(db, settings):
             markup = None
             day = date.fromisoformat(data['day'])
             daily = s.scalar(select(Daily).where(Daily.student_id == user.id, Daily.day == day))
-            if user.wellbeing and day == local_day(user) and daily and not daily.wellbeing_asked:
+            if user.wellbeing and daily:
                 daily.wellbeing_asked = True
                 text += '\n' + bot_text('wellbeing.practice_question')
                 markup = InlineKeyboardMarkup(inline_keyboard=mood_rows(f'result-feel:{activity.id}'))
@@ -259,7 +258,7 @@ def router(db, settings):
             text += bot_text('results.primary_suffix', primary=data.get('total', sum(v or 0 for v in data.get('values', {}).values())))
             text += bot_text('results.secondary_suffix', secondary=activity.secondary) if activity.secondary is not None else bot_text('results.missing_scale_suffix')
         await message.answer(text)
-        if user.wellbeing and data['day'] == local_day(user).isoformat():
+        if user.wellbeing:
             await ask_wellbeing(message,s,user,date.fromisoformat(data['day']))
         return
 
@@ -403,7 +402,7 @@ def router(db, settings):
                     activity_id, value = map(int, arg.split(':'))
                     if value not in range(1, len(mood_options()) + 1): return
                     activity = s.get(Activity, activity_id)
-                    if not activity or activity.student_id != user.id or activity.day != local_day(user): return
+                    if not activity or activity.student_id != user.id or activity.day > local_day(user): return
                     daily = s.scalar(select(Daily).where(Daily.student_id == user.id, Daily.day == activity.day))
                     if not daily or not daily.wellbeing_asked: return
                     daily.mood = mood_score(value)
