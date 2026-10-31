@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const source=fs.readFileSync('study/static/navigation.js','utf8');
+const block=source.slice(source.indexOf('// Selection belongs'),source.indexOf('window.StudyRouter ='));
+const data=new Map(),storage={getItem:key=>data.get(key)||null,setItem:(key,value)=>data.set(key,value)};
+const context={localStorage:storage};vm.runInNewContext(block+'globalThis.preference=StudentPreference',context);
+const p=context.preference;
+p.remember('1','2');assert.equal(p.restore('1','1',['1','2'],false),'2');
+assert.equal(p.restore('1','1',['1','2'],true),null,'An explicit deep link must win');
+assert.equal(p.restore('3','3',['2','3'],false),null,'Selection must be scoped to the signed-in account');
+assert.equal(p.restore('1','1',['1'],false),null,'A revoked pupil must not be restored');
+p.remember('1','bad');assert.equal(p.restore('1','1',['1','2'],false),'2');
+context.localStorage={getItem(){throw Error('blocked')},setItem(){throw Error('blocked')}};
+assert.doesNotThrow(()=>p.remember('1','2'));assert.equal(p.restore('1','1',['1','2'],false),null);
+console.log('Student preference regressions passed: persistence, explicit links, account scope, revoked access, blocked storage');

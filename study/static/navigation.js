@@ -14,6 +14,20 @@ function navigateWithMotion(destination, direction = 'section') {
  return window.StudyRouter?.ready ? window.StudyRouter.navigate(destination,direction) : location.assign(destination);
 }
 
+// Selection belongs to the signed-in account and is remembered only after rendering.
+const StudentPreference = (() => {
+ const key=user=>`study:last-student:${user}`;
+ function remember(user,student){
+  if(!user||!/^\d+$/.test(String(student)))return;
+  try{localStorage.setItem(key(user),String(student))}catch(_){}
+ }
+ function restore(user,current,allowed,explicit){
+  if(!user||explicit)return null;
+  try{const value=localStorage.getItem(key(user));return value&&value!==String(current)&&allowed.includes(value)?value:null}catch(_){return null}
+ }
+ return {remember,restore};
+})();
+
 window.StudyRouter = (() => {
  const routes = new Set(['/','/goals','/schedule','/plan','/analytics','/editing','/settings']);
  const cache = new Map(), prefetches = new Map(), prefetchJobs = new Map();
@@ -111,6 +125,7 @@ window.StudyRouter = (() => {
   currentHTML=data.html;renderedURL=target.href;
   window.initializeStudyView();
   const main=document.querySelector('main');main.tabIndex=-1;
+  StudentPreference.remember(user,main.dataset.studentId);
   if(focus)main.focus({preventScroll:true});
   window.scrollTo(...scroll);
   announce(document.querySelector('header nav [aria-current="page"]')?.getAttribute('aria-label')||'Страница открыта');
@@ -246,9 +261,15 @@ window.StudyRouter = (() => {
  window.addEventListener('pageshow',event=>{if(event.persisted){clearCache();refreshView()}});
  document.addEventListener('DOMContentLoaded',()=>{
   user=document.body.dataset.userId;version=document.body.dataset.viewVersion;ready=Boolean(user&&appURL(location.href));renderedURL=location.href;
-  if(ready){history.scrollRestoration='manual';history.replaceState({study:true,scroll:[scrollX,scrollY]},'',location.href);schedulePrefetch()}
+  if(ready){
+   history.scrollRestoration='manual';history.replaceState({study:true,scroll:[scrollX,scrollY]},'',location.href);
+   const current=document.querySelector('main').dataset.studentId,select=document.querySelector('[data-student-switch]');
+   const saved=StudentPreference.restore(user,current,select?[...select.options].map(option=>option.value):[],new URL(location.href).searchParams.has('student'));
+   if(saved){const url=new URL(location.href);url.searchParams.set('student',saved);navigate(url.href,'section',{replace:true});return}
+   StudentPreference.remember(user,current);schedulePrefetch();
+  }
  });
- // Follow the finger with inert snapshots; commit through the authorized router.
+ // Follow the finger with a bounded preview; commit through the authorized router.
  let swipe=null;
  const mobileSections=()=>matchMedia('(max-width:750px)').matches;
  function endSwipe(){
@@ -289,8 +310,9 @@ window.StudyRouter = (() => {
   clearTimeout(state.watchdog);state.watchdog=setTimeout(endSwipe,8000);
   const touch=event,dx=touch.clientX-state.x,dy=touch.clientY-state.y;
   if(!state.layer){
-   if(Math.max(Math.abs(dx),Math.abs(dy))<8)return;
-   if(Math.abs(dx)<Math.abs(dy)*1.3){endSwipe();return}
+   if(Math.max(Math.abs(dx),Math.abs(dy))<12)return;
+   if(Math.abs(dy)>Math.abs(dx)*1.35){endSwipe();return}
+   if(Math.abs(dx)<12||Math.abs(dx)<Math.abs(dy)*1.15)return;
    state.owner.setPointerCapture(event.pointerId);
    state.layer=document.createElement('div');state.layer.className='section-swipe';state.layer.inert=true;state.layer.setAttribute('aria-hidden','true');
    state.current=state.owner;state.current.style.willChange='translate';document.documentElement.dataset.swiping='true';
@@ -333,10 +355,12 @@ window.StudyRouter = (() => {
   finally{if(swipe===state)endSwipe()}
  },{passive:true});
  document.addEventListener('pointercancel',endSwipe,{passive:true});
- document.addEventListener('lostpointercapture',event=>{if(swipe?.pointer===event.pointerId&&!swipe.settling)endSwipe()});
+ document.addEventListener('lostpointercapture',event=>{
+  if(swipe?.pointer===event.pointerId&&event.target===swipe.owner&&!swipe.settling&&!swipe.owner.hasPointerCapture(event.pointerId))endSwipe();
+ });
  document.addEventListener('keydown',event=>{if(event.key==='Escape')endSwipe()});
  document.addEventListener('study:view',endSwipe);
- window.addEventListener('resize',endSwipe);
+ window.addEventListener('resize',()=>{if(swipe&&Math.abs(innerWidth-swipe.width)>1)endSwipe()});
  window.addEventListener('blur',endSwipe);
  document.addEventListener('visibilitychange',()=>{if(document.hidden)endSwipe()});
  return {navigate,prefetch,clearCache,get ready(){return ready}};

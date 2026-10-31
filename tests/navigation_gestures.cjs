@@ -21,7 +21,7 @@ function harness({rejectAnimation=false,waitForNetwork=false}={}){
  const document={hidden:false,documentElement:{dataset:{}},body:{append(node){layers.add(node)}},createElement:()=>new Node(),querySelector:()=>main,querySelectorAll:()=>links,addEventListener:listen};
  const context={document,window:{addEventListener:listen},ready:true,mutation:false,editing:()=>false,matchMedia:()=>({matches:true}),innerWidth:390,innerHeight:844,scrollY:0,performance:{now:()=>100},setTimeout,clearTimeout,Promise,reducedMotion:()=>false,canonical:x=>x,getCache:()=>null,prefetch:async()=>{},navigate:async url=>{navigations.push(url);if(waitForNetwork)await new Promise(()=>{})}};
  vm.runInNewContext(gestures,context);
- const emit=(type,x=250,y=300)=>Promise.all((handlers.get(type)||[]).map(fn=>fn({target:main,pointerId:1,isPrimary:true,button:0,clientX:x,clientY:y,cancelable:true,preventDefault(){}})));
+ const emit=(type,x=250,y=300,overrides={})=>Promise.all((handlers.get(type)||[]).map(fn=>fn({target:main,pointerId:1,isPrimary:true,button:0,clientX:x,clientY:y,cancelable:true,preventDefault(){},...overrides})));
  return {emit,layers,navigations,main};
 }
 (async()=>{
@@ -37,6 +37,12 @@ function harness({rejectAnimation=false,waitForNetwork=false}={}){
  assert.equal(offline.layers.size,0,'Overlay must disappear before waiting on a slow network');assert.equal(offline.navigations.length,1);
  await offline.emit('pointerdown');await offline.emit('pointermove',280);await offline.emit('pointerup',280);
  assert.equal(offline.layers.size,0,'A short subsequent gesture must also clean up');assert.equal(offline.navigations.length,1);
+ const transfer=harness();await transfer.emit('pointerdown');await transfer.emit('pointermove',100);
+ await transfer.emit('lostpointercapture',100,300,{target:{}});assert.equal(transfer.layers.size,1,'Implicit capture transfer from a child must not cancel the swipe');
+ await transfer.emit('lostpointercapture');assert.equal(transfer.layers.size,1,'A delayed capture event must not cancel the current owner');
+ await transfer.emit('resize');assert.equal(transfer.layers.size,1,'Mobile height-only resize must not cancel the swipe');
+ await transfer.emit('pointerup',100);assert.equal(transfer.navigations.length,1);
+ const diagonal=harness();await diagonal.emit('pointerdown');await diagonal.emit('pointermove',235,314);await diagonal.emit('pointermove',100,315);await diagonal.emit('pointerup',100,315);assert.equal(diagonal.navigations.length,1,'Ambiguous initial movement must not permanently reject a horizontal gesture');
  const vertical=harness();await vertical.emit('pointerdown');await vertical.emit('pointermove',251,150);await vertical.emit('pointerup',251,150);
  assert.equal(vertical.layers.size,0);assert.equal(vertical.navigations.length,0);
  console.log('Gesture regressions passed: interrupted animation, cancellation, slow network, short drag, vertical scroll');
