@@ -10,7 +10,7 @@ function harness({rejectAnimation=false,waitForNetwork=false}={}){
   querySelectorAll(){return []}
   removeAttribute(){} setAttribute(){}
   append(...nodes){this.children.push(...nodes)} replaceChildren(...nodes){this.children=nodes}
-  cloneNode(){return new Node()}
+  cloneNode(){throw new Error('Live screen cloning is forbidden')}
   remove(){layers.delete(this)}
   setPointerCapture(){captured=true} hasPointerCapture(){return captured} releasePointerCapture(){captured=false}
   animate(){const finished=rejectAnimation?Promise.reject(new Error('cancelled')):Promise.resolve();return {finished,cancel(){}}}
@@ -19,16 +19,17 @@ function harness({rejectAnimation=false,waitForNetwork=false}={}){
  const links=[0,1,2,3].map(n=>({href:`http://study.test/${n}`,hasAttribute:()=>n===1}));
  const listen=(type,fn)=>{const list=handlers.get(type)||[];list.push(fn);handlers.set(type,list)};
  const document={hidden:false,documentElement:{dataset:{}},body:{append(node){layers.add(node)}},createElement:()=>new Node(),querySelector:()=>main,querySelectorAll:()=>links,addEventListener:listen};
- const context={document,window:{addEventListener:listen},ready:true,mutation:false,editing:()=>false,matchMedia:()=>({matches:true}),innerWidth:390,scrollY:0,performance:{now:()=>100},setTimeout,clearTimeout,Promise,reducedMotion:()=>false,canonical:x=>x,getCache:()=>null,prefetch:async()=>{},navigate:async url=>{navigations.push(url);if(waitForNetwork)await new Promise(()=>{})}};
+ const context={document,window:{addEventListener:listen},ready:true,mutation:false,editing:()=>false,matchMedia:()=>({matches:true}),innerWidth:390,innerHeight:844,scrollY:0,performance:{now:()=>100},setTimeout,clearTimeout,Promise,reducedMotion:()=>false,canonical:x=>x,getCache:()=>null,prefetch:async()=>{},navigate:async url=>{navigations.push(url);if(waitForNetwork)await new Promise(()=>{})}};
  vm.runInNewContext(gestures,context);
  const emit=(type,x=250,y=300)=>Promise.all((handlers.get(type)||[]).map(fn=>fn({target:main,pointerId:1,isPrimary:true,button:0,clientX:x,clientY:y,cancelable:true,preventDefault(){}})));
- return {emit,layers,navigations};
+ return {emit,layers,navigations,main};
 }
 (async()=>{
  const interrupted=harness({rejectAnimation:true});
  await interrupted.emit('pointerdown');await interrupted.emit('pointermove',100);
  assert.equal(interrupted.layers.size,1);
  await interrupted.emit('pointerup',100);assert.equal(interrupted.layers.size,0,'Cancelled animation must release the overlay');
+ assert.equal(interrupted.main.style.translate,'','Live screen must be restored');
  await interrupted.emit('pointerdown');await interrupted.emit('pointermove',100);await interrupted.emit('pointercancel');assert.equal(interrupted.layers.size,0);
  const offline=harness({waitForNetwork:true});
  await offline.emit('pointerdown');await offline.emit('pointermove',100);

@@ -17,11 +17,13 @@ function chart(container,rows,series,max){
  const ns='http://www.w3.org/2000/svg', svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox',`0 0 ${width} 230`);svg.setAttribute('role','img');svg.setAttribute('aria-label','График результатов по датам');
  function el(tag,attrs,text){const node=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>node.setAttribute(k,v));if(text!==undefined)node.textContent=text;svg.append(node);return node;}
  for(let n=0;n<=4;n++){const y=190-n*40;el('line',{x1:40,x2:right,y1:y,y2:y,stroke:'var(--line)'});el('text',{x:3,y:y+4,'font-size':13,fill:'var(--muted)'},Math.round(max*n/4));}
+ // Limit SVG allocation independently of the number of saved results.
+ if(rows.length>240){const source=rows;rows=Array.from({length:240},(_,i)=>source[Math.round(i*(source.length-1)/239)])}
  const times=rows.map(row=>Date.parse(`${row.day}T00:00:00Z`)),first=times[0],last=times.at(-1);
  const x=i=>last===first?(38+right)/2:38+(times[i]-first)*(right-38)/(last-first), y=v=>190-v/max*160;
  series.forEach(([key,label,color])=>{let segment=[];const flush=()=>{if(segment.length)el('polyline',{points:segment.join(' '),fill:'none',stroke:color,'stroke-width':2});segment=[];};rows.forEach((row,i)=>{const value=row[key];if(value===null||value===undefined){flush();return}segment.push(`${x(i)},${y(value)}`);const point=el('circle',{cx:x(i),cy:y(value),r:4,fill:color});const title=document.createElementNS(ns,'title');title.textContent=`${row.day}: ${label} ${value}`;point.append(title)});flush();});
- const labelDays=[...new Set(rows.map(row=>row.day))];
- rows.forEach((row,i)=>{if((row.day===labelDays[0]||row.day===labelDays.at(-1)||row.day===labelDays[Math.floor((labelDays.length-1)/2)]||labelDays.length<5)&&rows.findIndex(r=>r.day===row.day)===i)el('text',{x:x(i),y:218,'text-anchor':'middle','font-size':12,fill:'var(--muted)'},row.day.slice(5).split('-').reverse().join('.'))});container.append(svg);
+ const labelDays=[...new Set(rows.map(row=>row.day))],labelled=new Set();
+ rows.forEach((row,i)=>{if((row.day===labelDays[0]||row.day===labelDays.at(-1)||row.day===labelDays[Math.floor((labelDays.length-1)/2)]||labelDays.length<5)&&!labelled.has(row.day)){labelled.add(row.day);el('text',{x:x(i),y:218,'text-anchor':'middle','font-size':12,fill:'var(--muted)'},row.day.slice(5).split('-').reverse().join('.'))}});container.append(svg);
  const legend=document.createElement('p');legend.className='chart-legend';series.forEach(([,label,color])=>{const item=document.createElement('span'),line=document.createElement('i');line.style.background=color;item.append(line,document.createTextNode(label));legend.append(item)});container.append(legend);
 }
 const themeButton=document.getElementById('theme-toggle');
@@ -110,6 +112,7 @@ if(dataNode){
  const earliest=data.rhythm.length?data.rhythm.reduce((day,row)=>row.day<day?row.day:day,today):today;
  const startDay=()=>period.value==='all'?earliest:moveDay(today,1-Number(period.value));
  const inPeriod=row=>row.day>=startDay()&&row.day<=today;
+ const taskResults=new Map();data.tasks.forEach(row=>{if(!taskResults.has(row.id))taskResults.set(row.id,[]);taskResults.get(row.id).push(row)});
  const average=values=>values.length?values.reduce((sum,value)=>sum+value,0)/values.length:0;
  const number=value=>Number.isInteger(value)?String(value):value.toFixed(1).replace('.',',');
  function metrics(id,items){
@@ -154,7 +157,7 @@ if(dataNode){
  let selectedTask=null;
  function results(taskId){
   const subject=document.getElementById('task-subject').value,kind=document.getElementById('task-kind').value;
-  return data.tasks.filter(row=>row.id===taskId&&String(row.subject_id)===subject&&(kind==='all'||row.kind===kind)).flatMap(row=>row.results).filter(inPeriod).sort((a,b)=>a.day.localeCompare(b.day)||a.activity_id-b.activity_id);
+  return (taskResults.get(taskId)||[]).filter(row=>String(row.subject_id)===subject&&(kind==='all'||row.kind===kind)).flatMap(row=>row.results).filter(inPeriod).sort((a,b)=>a.day.localeCompare(b.day)||a.activity_id-b.activity_id);
  }
  function taskDetail(){
   const task=data.task_catalog.find(row=>row.id===selectedTask),rows=results(selectedTask),attempts=rows.filter(row=>row.attempted);
@@ -190,7 +193,12 @@ if(dataNode){
  document.getElementById('task-subject').addEventListener('change',taskPicker);
  document.getElementById('task-kind').addEventListener('change',taskPicker);
  document.getElementById('task-number').addEventListener('change',event=>{selectedTask=Number(event.target.value);taskPicker()});
- onGlobal(window,'resize',render);
+ let resizeTimer,lastWidth=root.clientWidth;
+ onGlobal(window,'resize',()=>{
+  clearTimeout(resizeTimer);
+  resizeTimer=setTimeout(()=>{if(lifecycle.signal.aborted||root.clientWidth===lastWidth)return;lastWidth=root.clientWidth;render()},150);
+ });
+ lifecycle.signal.addEventListener('abort',()=>clearTimeout(resizeTimer),{once:true});
  render();
 }
 
@@ -264,8 +272,7 @@ function syncSettingsControls() {
  });
 }
 onGlobal(settingsLayout,'change', syncSettingsControls); syncSettingsControls();
-const currentSection = document.querySelector('header nav [aria-current="page"]');
-if (settingsLayout.matches && currentSection) currentSection.scrollIntoView({block:'nearest', inline:'center'});
+
 
 const weekPicker = document.getElementById('week-picker');
 const weekToggle = document.getElementById('week-picker-toggle');

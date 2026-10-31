@@ -1,7 +1,7 @@
 // One document, server-authorized views, and an in-memory cache scoped to this login.
 function resetPlanningWeek(refresh = false) {
  const url = new URL(location.href);
- if (!['/goals','/schedule','/plan','/editing'].includes(url.pathname)) return;
+ if (!['/','/goals','/schedule','/plan','/editing'].includes(url.pathname)) return;
  const selected = url.searchParams.has('week');
  if (!selected && !refresh) return;
  url.searchParams.delete('week'); url.searchParams.delete('edit');
@@ -15,7 +15,7 @@ function navigateWithMotion(destination, direction = 'section') {
 }
 
 window.StudyRouter = (() => {
- const routes = new Set(['/goals','/schedule','/plan','/analytics','/editing','/settings']);
+ const routes = new Set(['/','/goals','/schedule','/plan','/analytics','/editing','/settings']);
  const cache = new Map(), prefetches = new Map(), prefetchJobs = new Map();
  const MAX_ENTRIES = 10, MAX_BYTES = 2000000, TTL = 10000;
  let ready = false, sequence = 0, epoch = 0, activeRequest, idleTask, loadingTimer;
@@ -26,8 +26,11 @@ window.StudyRouter = (() => {
  const canonical = value => {const url=new URL(value,location.href);url.hash='';return url.href};
  const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
  function clearCache() {
-  epoch++; cache.clear(); prefetches.forEach(controller=>controller.abort()); prefetches.clear();
+  epoch++; cache.clear(); stopPrefetch();
   clearTimeout(idleTask);
+ }
+ function stopPrefetch(){
+  clearTimeout(idleTask);prefetches.forEach(controller=>controller.abort());prefetches.clear();prefetchJobs.clear();
  }
  function putCache(url,data) {
   if (data.html.includes('role="status"') || data.html.length > MAX_BYTES/2) return;
@@ -88,7 +91,7 @@ window.StudyRouter = (() => {
   return readView(response,()=>!signal.aborted,preserve);
  }
  function snapshotScroll() {
-  if(location.href===renderedURL)history.replaceState({...history.state,study:true,scroll:[scrollX,scrollY]},'',location.href);
+  if(location.href===renderedURL&&(history.state?.scroll?.[0]!==scrollX||history.state?.scroll?.[1]!==scrollY))history.replaceState({...history.state,study:true,scroll:[scrollX,scrollY]},'',location.href);
  }
  function render(data,direction,{historyMode='push',scroll=[0,0],focus=true}={}) {
   const target=appURL(data.url);
@@ -96,6 +99,7 @@ window.StudyRouter = (() => {
   const parsed=new DOMParser().parseFromString(data.html,'text/html');
   const nextMain=parsed.querySelector('main'),nextHeader=parsed.querySelector('header');
   if(!nextMain||!nextHeader||parsed.querySelector('script:not([type="application/json"])'))throw new Error('invalid-markup');
+  endSwipe();
   window.disposeStudyView?.();
   document.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());
   document.documentElement.classList.remove('modal-open');
@@ -127,9 +131,10 @@ window.StudyRouter = (() => {
   if(navigator.connection?.saveData||navigator.connection?.effectiveType==='2g')return;
   const started=epoch;
   idleTask=setTimeout(async()=>{
-   const urls=[...document.querySelectorAll('header nav a,.week-switch > a')].map(link=>link.href);
+   const links=[...document.querySelectorAll('header nav a')],index=links.findIndex(link=>link.hasAttribute('aria-current'));
+   const urls=[links[index+1],links[index-1]].filter(Boolean).map(link=>link.href);
    // Two at a time: don't compete with charts, image loading, or SQLite writes.
-   for(let index=0;index<urls.length;index+=2){if(started!==epoch||mutation||document.hidden)return;await Promise.all(urls.slice(index,index+2).map(prefetch))}
+   for(const url of urls){if(started!==epoch||mutation||document.hidden)return;await prefetch(url)}
   },250);
  }
  async function navigate(destination,direction='section',options={}) {
@@ -139,6 +144,8 @@ window.StudyRouter = (() => {
    if(options.pop)pendingPop={url:url.href,scroll:options.scroll||[0,0]};
    announce('Дождитесь сохранения');return;
   }
+  if(!options.force&&!options.pop&&!options.replace&&canonical(url.href)===canonical(renderedURL))return;
+  endSwipe();stopPrefetch();
   const key=canonical(url.href),requestID=++sequence;
   activeRequest?.abort();activeRequest=new AbortController();const controller=activeRequest;
   const timeout=setTimeout(()=>controller.abort('timeout'),15000);
@@ -218,15 +225,17 @@ window.StudyRouter = (() => {
  });
  document.addEventListener('input',event=>{const main=event.target.closest('main');if(main&&event.target.closest('form'))dirtyViews.add(main)});
  document.addEventListener('change',event=>{const main=event.target.closest('main');if(main&&event.target.closest('form'))dirtyViews.add(main)});
- document.addEventListener('pointerover',event=>{const link=event.target.closest('a[href]');if(link)prefetch(link.href)});
- document.addEventListener('focusin',event=>{const link=event.target.closest('a[href]');if(link)prefetch(link.href)});
  window.addEventListener('popstate',event=>{if(ready)navigate(location.href,'section',{pop:true,scroll:event.state?.scroll||[0,0]})});
- let scrollFrame;
- window.addEventListener('scroll',()=>{if(!scrollFrame)scrollFrame=requestAnimationFrame(()=>{scrollFrame=null;snapshotScroll()})},{passive:true});
+ let scrollTimer;
+ window.addEventListener('scroll',()=>{
+  if(!ready||scrollTimer)return;
+  scrollTimer=setTimeout(()=>{scrollTimer=null;try{snapshotScroll()}catch(_){}},750);
+ },{passive:true});
+ window.addEventListener('pagehide',()=>{clearTimeout(scrollTimer);stopPrefetch();endSwipe()});
  const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone;
  function refreshView() {
   if(!ready)return;
-  if(standalone()&&['/goals','/schedule','/plan','/editing'].includes(location.pathname))resetPlanningWeek(true);
+  if(standalone()&&['/','/goals','/schedule','/plan','/editing'].includes(location.pathname))resetPlanningWeek(true);
   else navigate(location.href,'section',{replace:true,force:true,preserve:true,scroll:[scrollX,scrollY]});
  }
  let wasHidden=document.hidden;
@@ -246,20 +255,27 @@ window.StudyRouter = (() => {
   if(!swipe)return;
   const state=swipe;swipe=null;
   clearTimeout(state.watchdog);state.animations?.forEach(animation=>animation.cancel());state.layer?.remove();
+  if(state.current){state.current.style.translate='';state.current.style.willChange=''}
+  delete document.documentElement.dataset.swiping;
   if(state.owner?.hasPointerCapture(state.pointer))state.owner.releasePointerCapture(state.pointer);
  }
- function snapshot(main,offset=0){
-  const copy=main.cloneNode(true);
-  copy.querySelectorAll('script,dialog').forEach(node=>node.remove());
-  [copy,...copy.querySelectorAll('[id]')].forEach(node=>node.removeAttribute('id'));
-  copy.style.transform=`translateY(${-offset}px)`;
-  return copy;
+ function preview(html){
+  // A preview is optional. Never clone the live screen or parse an unbounded view.
+  if(!html||html.length>120000)return null;
+  const parsed=new DOMParser().parseFromString(html,'text/html'),main=parsed.querySelector('main');
+  if(!main)return null;
+  main.querySelectorAll('script,dialog,form,.board-actions,.week-switch').forEach(node=>node.remove());
+  if(main.querySelectorAll('*').length>600)return null;
+  [main,...main.querySelectorAll('[id]')].forEach(node=>node.removeAttribute('id'));
+  return main;
  }
  document.addEventListener('pointerdown',event=>{
   if(swipe?.settling){endSwipe();return}
   endSwipe();
   if(!ready||!mobileSections()||mutation||editing()||!event.isPrimary||event.button!==0||document.documentElement.dataset.loading)return;
   if(!event.target.closest('main')||event.target.closest('a,button,input,select,textarea,form,dialog,.table-scroll,.analytics-chart,.rhythm-calendar'))return;
+  const owner=event.target.closest('main');
+  if(owner.scrollHeight>innerHeight*6||owner.querySelectorAll('*').length>1800)return;
   const touch=event;
   if(touch.clientX<24||touch.clientX>innerWidth-24)return;
   const links=[...document.querySelectorAll('header nav a')],index=links.findIndex(link=>link.hasAttribute('aria-current'));
@@ -277,8 +293,8 @@ window.StudyRouter = (() => {
    if(Math.abs(dx)<Math.abs(dy)*1.3){endSwipe();return}
    state.owner.setPointerCapture(event.pointerId);
    state.layer=document.createElement('div');state.layer.className='section-swipe';state.layer.inert=true;state.layer.setAttribute('aria-hidden','true');
-   state.current=document.createElement('div');state.current.className='section-swipe-pane';state.current.append(snapshot(document.querySelector('main'),state.scroll));
-   state.next=document.createElement('div');state.next.className='section-swipe-pane';state.layer.append(state.current,state.next);document.body.append(state.layer);
+   state.current=state.owner;state.current.style.willChange='translate';document.documentElement.dataset.swiping='true';
+   state.next=document.createElement('div');state.next.className='section-swipe-pane';state.layer.append(state.next);document.body.append(state.layer);
   }
   if(event.cancelable)event.preventDefault();
   const step=dx<0?1:-1,link=state.links[state.index+step];
@@ -288,14 +304,14 @@ window.StudyRouter = (() => {
     const fill=()=>{
      if(swipe!==state||state.step!==step)return;
      const cached=getCache(canonical(link.href));if(!cached)return
-     const main=new DOMParser().parseFromString(cached.html,'text/html').querySelector('main');
-     if(main)state.next.replaceChildren(snapshot(main));
+     const main=preview(cached.html);
+     if(main)state.next.replaceChildren(main);
     };
     fill();prefetch(link.href).then(fill).catch(()=>{});
    }
   }
   state.dx=link?Math.max(-state.width,Math.min(state.width,dx)):dx*.18;
-  state.current.style.transform=`translateX(${state.dx}px)`;
+  state.current.style.translate=`${state.dx}px 0`;
   state.next.style.transform=`translateX(${state.dx+step*state.width}px)`;
  },{passive:false});
  document.addEventListener('pointerup',async event=>{
@@ -306,7 +322,7 @@ window.StudyRouter = (() => {
   const commit=state.destination&&(Math.abs(dx)>state.width*.25||(Math.abs(dx)>48&&Math.abs(dx)/elapsed>.45));
   const target=commit?-state.step*state.width:0,duration=reducedMotion()?0:190;
   try{
-   state.animations=[state.current.animate([{transform:`translateX(${dx}px)`},{transform:`translateX(${target}px)`}],{duration,fill:'forwards',easing:'cubic-bezier(.2,.7,.2,1)'}),
+   state.animations=[state.current.animate([{translate:`${dx}px 0`},{translate:`${target}px 0`}],{duration,fill:'forwards',easing:'cubic-bezier(.2,.7,.2,1)'}),
     state.next.animate([{transform:`translateX(${dx+state.step*state.width}px)`},{transform:`translateX(${target+state.step*state.width}px)`}],{duration,fill:'forwards',easing:'cubic-bezier(.2,.7,.2,1)'})];
    await Promise.all(state.animations.map(animation=>animation.finished));
    if(swipe!==state)return;
