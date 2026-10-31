@@ -237,5 +237,77 @@ window.StudyRouter = (() => {
   user=document.body.dataset.userId;version=document.body.dataset.viewVersion;ready=Boolean(user&&appURL(location.href));renderedURL=location.href;
   if(ready){history.scrollRestoration='manual';history.replaceState({study:true,scroll:[scrollX,scrollY]},'',location.href);schedulePrefetch()}
  });
+ // Follow the finger with inert snapshots; commit through the authorized router.
+ let swipe=null;
+ const mobileSections=()=>matchMedia('(max-width:750px)').matches;
+ function endSwipe(){
+  if(!swipe)return;
+  cancelAnimationFrame(swipe.previewFrame);swipe.layer?.remove();swipe=null;
+ }
+ function snapshot(main,offset=0){
+  const copy=main.cloneNode(true);
+  copy.querySelectorAll('script,dialog').forEach(node=>node.remove());
+  [copy,...copy.querySelectorAll('[id]')].forEach(node=>node.removeAttribute('id'));
+  copy.style.transform=`translateY(${-offset}px)`;
+  return copy;
+ }
+ document.addEventListener('pointerdown',event=>{
+  if(swipe?.settling)return;
+  endSwipe();
+  if(!ready||!mobileSections()||mutation||editing()||!event.isPrimary||event.button!==0||document.documentElement.dataset.loading)return;
+  if(!event.target.closest('main')||event.target.closest('a,button,input,select,textarea,form,dialog,.table-scroll,.analytics-chart,.rhythm-calendar'))return;
+  const touch=event;
+  if(touch.clientX<24||touch.clientX>innerWidth-24)return;
+  const links=[...document.querySelectorAll('header nav a')],index=links.findIndex(link=>link.hasAttribute('aria-current'));
+  if(index<0)return;
+  swipe={pointer:event.pointerId,x:touch.clientX,y:touch.clientY,dx:0,time:performance.now(),links,index,width:innerWidth,scroll:scrollY};
+ },{passive:true});
+ document.addEventListener('pointermove',event=>{
+  const state=swipe;if(!state||state.settling||state.pointer!==event.pointerId)return;
+  if(editing()){endSwipe();return}
+  const touch=event,dx=touch.clientX-state.x,dy=touch.clientY-state.y;
+  if(!state.layer){
+   if(Math.max(Math.abs(dx),Math.abs(dy))<8)return;
+   if(Math.abs(dx)<Math.abs(dy)*1.3){endSwipe();return}
+   state.layer=document.createElement('div');state.layer.className='section-swipe';state.layer.inert=true;state.layer.setAttribute('aria-hidden','true');
+   state.current=document.createElement('div');state.current.className='section-swipe-pane';state.current.append(snapshot(document.querySelector('main'),state.scroll));
+   state.next=document.createElement('div');state.next.className='section-swipe-pane';state.layer.append(state.current,state.next);document.body.append(state.layer);
+  }
+  if(event.cancelable)event.preventDefault();
+  const step=dx<0?1:-1,link=state.links[state.index+step];
+  if(state.step!==step){
+   state.step=step;state.destination=link?.href;state.next.replaceChildren();
+   if(link){
+    const fill=()=>{
+     if(swipe!==state||state.step!==step)return;
+     const cached=getCache(canonical(link.href));if(!cached){state.previewFrame=requestAnimationFrame(fill);return}
+     const main=new DOMParser().parseFromString(cached.html,'text/html').querySelector('main');
+     if(main)state.next.replaceChildren(snapshot(main));
+    };
+    prefetch(link.href);fill();
+   }
+  }
+  state.dx=link?Math.max(-state.width,Math.min(state.width,dx)):dx*.18;
+  state.current.style.transform=`translateX(${state.dx}px)`;
+  state.next.style.transform=`translateX(${state.dx+step*state.width}px)`;
+ },{passive:false});
+ document.addEventListener('pointerup',async event=>{
+  const state=swipe;if(!state||state.settling||state.pointer!==event.pointerId)return;
+  if(!state.layer){endSwipe();return}
+  state.settling=true;
+  const dx=state.dx,elapsed=performance.now()-state.time;
+  const commit=state.destination&&(Math.abs(dx)>state.width*.25||(Math.abs(dx)>48&&Math.abs(dx)/elapsed>.45));
+  const target=commit?-state.step*state.width:0,duration=reducedMotion()?0:190;
+  await Promise.all([state.current.animate([{transform:`translateX(${dx}px)`},{transform:`translateX(${target}px)`}],{duration,fill:'forwards',easing:'cubic-bezier(.2,.7,.2,1)'}).finished,
+   state.next.animate([{transform:`translateX(${dx+state.step*state.width}px)`},{transform:`translateX(${target+state.step*state.width}px)`}],{duration,fill:'forwards',easing:'cubic-bezier(.2,.7,.2,1)'}).finished]);
+  if(swipe!==state)return;
+  if(commit)await navigate(state.destination,'section');
+  if(swipe===state)endSwipe();
+ },{passive:true});
+ document.addEventListener('pointercancel',endSwipe,{passive:true});
+ document.addEventListener('study:view',endSwipe);
+ window.addEventListener('resize',endSwipe);
+ window.addEventListener('blur',endSwipe);
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)endSwipe()});
  return {navigate,prefetch,clearCache,get ready(){return ready}};
 })();

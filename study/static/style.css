@@ -139,3 +139,38 @@ html[data-loading=true]::before{content:'';position:fixed;inset:0 0 auto;height:
  .card-board{padding-bottom:24px}
  .completed-week{margin-bottom:16px}
 }
+
+/* A single card language for goals and completed work. */
+.dashboard-label{width:min(924px,calc(100% - 48px));margin:24px auto 12px;font-size:16px;font-weight:600;letter-spacing:0}
+.planning-board:has(.completed-week){padding-top:12px}
+.planning-board:has(.completed-week) .goals-board{width:min(924px,calc(100% - 48px));max-width:none;justify-content:flex-start;gap:16px;margin:0 auto;padding:0}
+.planning-board:has(.completed-week) .board-card{flex-basis:calc((100% - 32px)/3);max-width:none;min-height:160px;border-radius:18px;padding:22px}
+.completed-week{margin:24px auto 32px}
+.completed-week .dashboard-label{width:100%;margin:0 0 12px}
+.completed-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.completed-card::before{display:none}
+.completed-card small{display:block;color:var(--muted);font-size:12px}
+.completed-card .numbers{margin:24px 0 12px}
+@media(max-width:980px){.completed-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.planning-board:has(.completed-week) .board-card{flex-basis:calc((100% - 16px)/2)}}
+@media(max-width:750px){
+ header nav{inset:auto 12px calc(12px + env(safe-area-inset-bottom));width:calc(100% - 24px);height:68px;padding:6px;gap:4px;border:1px solid rgb(255 255 255 / .65);border-radius:24px;background:rgb(255 255 255 / .76);box-shadow:0 6px 28px rgb(0 0 0 / .09);backdrop-filter:blur(24px) saturate(1.25);-webkit-backdrop-filter:blur(24px) saturate(1.25)}
+ html[data-theme=dark] header nav{background:rgb(28 28 28 / .76);border-color:rgb(255 255 255 / .12);box-shadow:0 6px 28px rgb(0 0 0 / .24)}
+ header nav a{border-radius:18px}
+ header nav a.active{background:rgb(127 127 127 / .1)}
+ .week-switch,.board-actions{bottom:calc(96px + env(safe-area-inset-bottom))}
+ .dashboard-label,.completed-week,.planning-board:has(.completed-week) .goals-board{width:calc(100% - 32px)}
+ .completed-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+ .planning-board:has(.completed-week) .goals-board{gap:12px}
+ .planning-board:has(.completed-week) .board-card{flex-basis:calc((100% - 12px)/2);min-height:146px;padding:18px}
+ .board-card.goal-card>strong{font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+ .board-card.goal-card .numbers{font-size:28px;margin:20px 0 10px}
+ .board-card.goal-card .numbers span{font-size:13px}
+ .completed-week{margin-top:28px;margin-bottom:8px}
+}
+@media(max-width:350px){.completed-grid{grid-template-columns:1fr}.planning-board:has(.completed-week) .board-card{flex-basis:100%}}
+.section-swipe{position:fixed;inset:0;z-index:15;pointer-events:none;overflow:hidden;background:var(--paper)}
+.section-swipe-pane{position:absolute;inset:0;overflow:hidden;background:var(--paper);will-change:transform}
+.section-swipe-pane main{animation:none!important;margin-top:0;min-height:100%;width:100%}
+.section-swipe-pane .board-actions,.section-swipe-pane .week-switch,.section-swipe-pane dialog{display:none!important}
+@media(prefers-reduced-transparency:reduce){header nav{background:var(--paper)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}
+@media(max-width:750px){main{touch-action:pan-y pinch-zoom}.planning-board:has(.completed-week) .board-card>strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow:hidden;min-height:36px}.planning-board:has(.completed-week) .goals-board:empty{display:none}}

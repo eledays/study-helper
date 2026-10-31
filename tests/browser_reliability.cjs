@@ -48,7 +48,7 @@ const {chromium}=require('playwright');
   assert.equal(await page.locator('header nav .section-icon').count(),4);
   const mobileNav=await page.locator('header nav').boundingBox();
   const mobileAdd=await page.locator('#board-add').boundingBox();
-  assert.ok(mobileNav.y>=750 && mobileNav.y+mobileNav.height<=845);
+  assert.ok(mobileNav.y>=750 && mobileNav.y+mobileNav.height<=833);
   assert.ok(mobileAdd.y+mobileAdd.height<mobileNav.y);
   assert.equal(await page.locator('#board-add svg').count(),1);
   assert.equal(await page.locator('header nav').evaluate(node=>node.scrollWidth>node.clientWidth),false);

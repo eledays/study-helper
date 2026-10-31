@@ -11,6 +11,7 @@
     </div>
 
   </div>
+  {% if section == 'goals' and goals %}<h2 class="dashboard-label">Цели</h2>{% endif %}
   <div id="board-cards" data-editing="{{'true' if request.args.get('edit') == '1' else 'false'}}" class="card-board {{'goals-board' if section == 'goals' else 'schedule-board'}}">
   {% if section == 'goals' %}
     {% for goal in goals %}
@@ -18,7 +19,7 @@
       <strong title="{{goal.label|display_label}}">{{goal.label|display_label}}</strong>
       <div class="numbers">{{goal.done}} <span>из {{goal.target}}</span></div>
     </article>
-    {% else %}<p class="empty">Нет целей на эту неделю</p>{% endfor %}
+    {% else %}{% if not completed.history and not completed.exams %}<p class="empty">Нет целей на эту неделю</p>{% endif %}{% endfor %}
   {% else %}
     {% for n in range(7) %}
     {% set day=week+timedelta(days=n) %}
@@ -38,18 +39,29 @@
   </div>
   {% if section == 'goals' %}
   <section class="completed-week" aria-labelledby="completed-title">
-    <div class="heading"><h2 id="completed-title">Сделано за неделю</h2><a href="{{url_for('page',section='analytics',student=g.student.id,week=week,period=7)}}">Аналитика →</a></div>
-    <p class="muted">Занятий: {{completed.history|length}} · Пробников: {{completed.exams|length}} · Решений заданий: {{completed.history|sum(attribute='attempts')}}</p>
+    <h2 id="completed-title" class="dashboard-label">Занятия</h2>
+    <div class="completed-grid">
     {% for n in range(6,-1,-1) %}
     {% set day=week+timedelta(days=n) %}
     {% set practices=completed.history|selectattr('day','equalto',day.isoformat())|list %}
     {% set exams=completed.exams|selectattr('day','equalto',day.isoformat())|list %}
-    {% if practices or exams %}<article class="completed-day"><h3>{{['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'][n]}} <span>{{day.strftime('%d.%m')}}</span></h3>
-    {% for item in practices %}<div class="completed-row">{{ui_icon('check_circle')}}<div><strong>{{item.subject}}</strong><small>Занятие · Решено заданий: {{item.attempts}} · Баллов: {{item.score}}</small></div></div>{% endfor %}
-    {% for item in exams %}<div class="completed-row">{{ui_icon('assignment_turned_in')}}<div><strong>{{item.subject}} · Пробник</strong><small>{{item.primary}} из {{item.maximum}} первичных{% if item.secondary is not none %} · {{item.secondary}} вторичных{% endif %} баллов</small></div></div>{% endfor %}
-    </article>{% endif %}
+    {% for subject, items in practices|groupby('subject') %}
+    <article class="board-card goal-card completed-card">
+      <strong>{{subject}}</strong>
+      <div class="numbers">{{items|sum(attribute='attempts')}} <span>заданий</span></div>
+      <small>{{day.strftime('%d.%m')}} · {{items|length}} {{'занятие' if items|length % 10 == 1 and items|length % 100 != 11 else 'занятия' if items|length % 10 in (2,3,4) and items|length % 100 not in (12,13,14) else 'занятий'}}</small>
+    </article>
     {% endfor %}
-    {% if not completed.history and not completed.exams %}<p class="empty">Пока нет выполненных занятий. Запишите занятие в боте — оно появится здесь.</p>{% endif %}
+    {% for item in exams %}
+    <article class="board-card goal-card completed-card">
+      <strong>{{item.subject}}</strong>
+      <div class="numbers">{{item.primary}} <span>из {{item.maximum}}</span></div>
+      <small>{{day.strftime('%d.%m')}} · Пробник{% if item.secondary is not none %} · {{item.secondary}} вторичных{% endif %}</small>
+    </article>
+    {% endfor %}
+    {% endfor %}
+    </div>
+    {% if not completed.history and not completed.exams %}<p class="empty">Занятий пока нет</p>{% endif %}
   </section>
   {% endif %}
   <dialog id="week-picker" class="create-dialog week-picker" aria-labelledby="week-picker-title" data-today="{{today}}">
