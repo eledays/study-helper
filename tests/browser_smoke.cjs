@@ -10,14 +10,14 @@ const {chromium}=require('playwright');
   page.on('pageerror',error=>errors.push(error.message));
   await page.goto('http://127.0.0.1:18081/login');
   await page.getByRole('button',{name:'Войти как первый пользователь'}).click();
-  await page.waitForURL('**/goals');
+  await page.waitForURL('http://127.0.0.1:18081/');
   await page.locator('#board-add').click();
   const goal=page.locator('dialog form');
   await goal.locator('[name="subject_id"]').selectOption({index:1});
   const groupId=await goal.locator('[name="group_id"] option:not([disabled])[data-subject]').first().getAttribute('value');
   await goal.locator('[name="group_id"]').selectOption(groupId);
   await goal.getByRole('button',{name:'Добавить',exact:true}).click();
-  await page.waitForURL('**/goals?**');
+  await page.waitForURL('**/?**');
   if(await page.locator('.goal-card').count()!==1)throw Error('Goal was not created');
   const fillMotion=await page.locator('.goal-card').evaluate(async node=>{
    const animation=node.getAnimations({subtree:true}).find(item=>item.animationName==='goal-fill-in');
@@ -52,7 +52,7 @@ const {chromium}=require('playwright');
   await page.waitForURL('**period=28');
   if(await page.locator('#analytics-period').inputValue()!=='28')throw Error('Period not retained');
   // Week navigation survives ordinary links but reload returns to today's week.
-  await page.goto('http://127.0.0.1:18081/goals?week=2020-01-06');
+  await page.goto('http://127.0.0.1:18081/?week=2020-01-06');
   await page.getByRole('link',{name:'Следующая неделя',exact:true}).click();
   await page.waitForURL(url=>url.searchParams.get('week')==='2020-01-13');
   if(!page.url().includes('week=2020-01-13'))throw Error('Week navigation failed');
@@ -64,7 +64,7 @@ const {chromium}=require('playwright');
   if(await page.locator('.week-switch time').getAttribute('datetime')==='2020-01-13')throw Error('Reload kept old week');
   for(const width of [320,390,750,1280]){
    await page.setViewportSize({width,height:844});
-   for(const route of ['/goals','/schedule','/analytics','/editing','/settings']){
+   for(const route of ['/','/schedule','/analytics','/editing','/settings']){
     await page.goto('http://127.0.0.1:18081'+route);
     if(!await page.locator('header > nav').isVisible())throw Error('Sections not in header');
     if(width<=750){
@@ -86,7 +86,7 @@ const {chromium}=require('playwright');
      for(const empty of await page.locator('.day.is-empty').all())if((await empty.boundingBox()).height>80)throw Error('Empty day is not compact');
     }
     if(route==='/schedule'&&width===320)await page.screenshot({path:'/tmp/study-mobile.png',fullPage:true});
-    if(['/goals','/schedule'].includes(route)){
+    if(['/','/schedule'].includes(route)){
      const bounds=await page.locator('.week-switch').boundingBox();
      if(bounds.x<0||bounds.x+bounds.width>width)throw Error('Week selector outside viewport');
      const cards=await page.locator('.card-board').boundingBox();
@@ -106,7 +106,7 @@ const {chromium}=require('playwright');
    }
   }
   await page.setViewportSize({width:390,height:844});
-  await page.goto('http://127.0.0.1:18081/goals');
+  await page.goto('http://127.0.0.1:18081/');
   // Mobile personal controls are available in settings and preserve plan context.
   await page.getByRole('link',{name:'Настройки',exact:true}).click();
   await page.waitForURL('**/settings?**');
@@ -115,7 +115,7 @@ const {chromium}=require('playwright');
   await page.waitForURL(url=>url.searchParams.get('student')==='2');
   if(await selector.inputValue()!=='2')throw Error('Pupil plan selection lost');
   await page.getByRole('link',{name:'Главная',exact:true}).click();
-  await page.waitForURL('**/goals?**');
+  await page.waitForURL('**/?**');
   const originalWeek=await page.locator('.week-switch time').getAttribute('datetime');
   await page.getByRole('button',{name:'Выбрать неделю',exact:true}).click();
   if(await page.locator('#week-options a').count()<15)throw Error('Week list missing');
@@ -138,7 +138,7 @@ const {chromium}=require('playwright');
   await page.waitForURL('**/schedule?**');
   if(await page.locator('.week-switch time').getAttribute('datetime')!==currentWeek||new URL(page.url()).searchParams.get('student')!=='2')throw Error('Section swipe changed week or student');
   await swipe(90,300,270,305);
-  await page.waitForURL('**/goals?**');
+  await page.waitForURL('**/?**');
   await page.waitForFunction(week=>document.querySelector('.week-switch time').dateTime===week,currentWeek);
   const beforeVertical=page.url();
   await swipe(190,400,195,250);
@@ -166,7 +166,7 @@ const {chromium}=require('playwright');
   await page.waitForFunction(()=>!document.getElementById('week-picker').open);
   await page.emulateMedia({reducedMotion:'reduce'});
   await page.getByRole('link',{name:'Главная',exact:true}).click();
-  await page.waitForURL('**/goals?**');
+  await page.waitForURL('**/?**');
   const reduced=await page.locator('.goal-card').first().evaluate(node=>({card:getComputedStyle(node).animationName,fill:getComputedStyle(node,'::before').animationName}));
   if(reduced.card!=='none'||reduced.fill!=='none')throw Error('Reduced motion is not respected');
   await page.emulateMedia({reducedMotion:'no-preference'});
@@ -181,7 +181,7 @@ const {chromium}=require('playwright');
    const original=window.matchMedia.bind(window);
    window.matchMedia=query=>query==='(display-mode: standalone)'?{matches:true}:original(query);
   });
-  await page.goto('http://127.0.0.1:18081/goals?week=2020-01-06');
+  await page.goto('http://127.0.0.1:18081/?week=2020-01-06');
   await page.evaluate(()=>{
    Object.defineProperty(document,'hidden',{configurable:true,value:true});
    document.dispatchEvent(new Event('visibilitychange'));
@@ -195,10 +195,10 @@ const {chromium}=require('playwright');
   if(cachedRequests.some(path=>!path.startsWith('/static/')))throw Error('Private page cached');
   // Installable metadata, root worker, offline navigation, and recovery.
   const manifest=await (await context.request.get('http://127.0.0.1:18081/static/manifest.webmanifest')).json();
-  if(manifest.start_url!=='/goals'||manifest.display!=='standalone')throw Error('Invalid manifest');
+  if(manifest.start_url!=='/'||manifest.display!=='standalone')throw Error('Invalid manifest');
   await page.evaluate(async()=>{await navigator.serviceWorker.ready;if(!navigator.serviceWorker.controller)await new Promise(resolve=>navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true}))});
   await context.setOffline(true);
-  await page.goto('http://127.0.0.1:18081/goals');
+  await page.goto('http://127.0.0.1:18081/');
   await page.getByRole('heading',{name:'Нет подключения',exact:true}).waitFor();
   await context.setOffline(false);
   await page.getByRole('link',{name:'Повторить',exact:true}).click();

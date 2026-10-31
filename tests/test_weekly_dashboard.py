@@ -41,3 +41,20 @@ def test_repeated_sessions_share_one_compact_card(client, db):
     assert '3 <span>заданий</span>' in html
     assert '13.10 · 3 занятия' in html
     assert 'Сделано за неделю' not in html
+
+
+def test_home_root_is_full_page_and_authorized_fragment(client):
+    response = client.get('/')
+    assert response.status_code == 200 and '>Главная</h1>' in response.text
+    assert 'href="/?student=1' in response.text
+    view = client.get('/?week=2026-10-12', headers={'X-Study-Navigation': '1'})
+    assert view.status_code == 200 and view.json['url'] == '/?week=2026-10-12'
+    assert '<!doctype' not in view.json['html']
+    assert client.get('/?student=3').status_code == 403
+
+
+def test_home_uses_only_aggregate_completion_data(client, monkeypatch):
+    def unexpected(*args, **kwargs):
+        raise AssertionError('Home must not allocate full analytics')
+    monkeypatch.setattr('study.web.analytics', unexpected)
+    assert client.get('/').status_code == 200

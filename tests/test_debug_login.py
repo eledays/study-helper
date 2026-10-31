@@ -24,7 +24,7 @@ def test_debug_login_first_user_and_fresh_session(db):
         session['old_state'] = 'discard'
     response = client.post('/auth/debug', data={'csrf': csrf})
     assert response.status_code == 302
-    assert response.location.endswith('/goals')
+    assert response.location.endswith('/')
     with client.session_transaction() as session:
         assert session['user_id'] == 1
         assert session['csrf'] != csrf

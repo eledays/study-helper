@@ -1,7 +1,7 @@
 from datetime import date, timedelta, datetime
 from zoneinfo import ZoneInfo
 from uuid import uuid4
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func, case
 from .presentation import display_label, task_order_key
 from .messages import bot_html, bot_text, bot_texts, UserMessageError
 from .groups import standard_tasks, group_tasks
@@ -175,6 +175,29 @@ def change_series(s, model, actor_id, student_id, item_id, scope, changes):
                 row.day = when + (value - anchor)
             else:
                 setattr(row, key, value)
+
+
+def completed_work(s, actor_id, student_id, start, end):
+    """A bounded date range with aggregate scores, without chart/catalog allocation."""
+    accessible(s, actor_id, student_id)
+    rows = s.execute(select(Activity, Subject.name,
+        func.sum(case((Score.attempted.is_(True), 1), else_=0)),
+        func.coalesce(func.sum(Score.score), 0), func.coalesce(func.sum(Score.maximum), 0),
+        ExamTotal.primary_score, ExamTotal.maximum)
+        .join(Subject, Subject.id == Activity.subject_id)
+        .outerjoin(Score, Score.activity_id == Activity.id)
+        .outerjoin(ExamTotal, ExamTotal.activity_id == Activity.id)
+        .where(Activity.student_id == student_id, Activity.day >= start, Activity.day <= end)
+        .group_by(Activity.id).order_by(Activity.day, Activity.id))
+    history, exams = [], []
+    for activity, subject, attempts, score, maximum, total, total_max in rows:
+        item = {'id': activity.id, 'day': activity.day.isoformat(), 'subject': display_label(subject)}
+        if activity.kind == 'exam':
+            exams.append({**item, 'primary': total if total is not None else score,
+                          'maximum': total_max if total_max is not None else maximum, 'secondary': activity.secondary})
+        else:
+            history.append({**item, 'attempts': attempts, 'score': score})
+    return {'history': history, 'exams': exams}
 
 
 def analytics(s, actor_id, student_id, start=None, end=None, summaries=True, weekly_summaries=True):

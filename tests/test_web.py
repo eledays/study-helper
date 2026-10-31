@@ -90,7 +90,7 @@ def test_separate_planning_pages_and_short_labels(client,db):
     teacher=client.get('/goals?student=1&week=2026-10-12').data.decode()
     assert 'class="profile-card profile-student"' in teacher
     assert 'Учитель' in teacher and 'Саша' in teacher
-    assert 'aria-current="page" href="/goals?student=1&amp;week=2026-10-12"' in teacher
+    assert 'aria-current="page" href="/?student=1&amp;week=2026-10-12"' in teacher
 
 
 def test_planning_edits_return_to_same_section_and_mode(client,db):
@@ -102,7 +102,7 @@ def test_planning_edits_return_to_same_section_and_mode(client,db):
         s.add_all([goal,slot]);s.flush();goal_id,slot_id=goal.id,slot.id
     base={'csrf':'test-csrf','return_week':'2026-10-12','editing':'1','scope':'one'}
     response=client.post(f'/goals/{goal_id}',data={**base,'target':6})
-    assert '/goals?' in response.location and 'edit=1' in response.location and 'week=2026-10-12' in response.location
+    assert '/?' in response.location and 'edit=1' in response.location and 'week=2026-10-12' in response.location
     assert 'section=editing' not in response.location
     assert client.get('/editing?tab=plan&week=2026-10-12').status_code == 200
     response=client.post(f'/slots/{slot_id}',data={**base,'start':'17:00','end':'18:00'})

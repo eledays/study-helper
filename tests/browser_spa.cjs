@@ -9,16 +9,17 @@ const {chromium}=require('playwright');
   page.on('pageerror',error=>errors.push(error.message));
   await page.goto('http://127.0.0.1:18081/login');
   await page.getByRole('button',{name:'Войти как первый пользователь'}).click();
-  await page.waitForURL('**/goals');
+  await page.waitForURL('http://127.0.0.1:18081/');
   await page.waitForFunction(()=>window.StudyRouter?.ready);
   const marker=await page.evaluate(()=>window.documentMarker=crypto.randomUUID());
   const documentRequests=[];
   page.on('request',request=>{if(request.isNavigationRequest())documentRequests.push(request.url())});
   async function sameDocument(){if(await page.evaluate(()=>window.documentMarker)!==marker)throw Error('Document reloaded')}
   async function section(name,path){
-   await page.locator('header nav').getByRole('link',{name,exact:true}).click();
+   if(path==='/editing'){await section('Настройки','/settings');await page.getByRole('link',{name:'Редактирование записей →',exact:true}).click()}
+   else await page.locator('header nav').getByRole('link',{name,exact:true}).click();
    await page.waitForURL(url=>url.pathname===path);
-   await page.waitForFunction(path=>new URL(document.querySelector('header [aria-current="page"]').href).pathname===path,path);
+   if(path!=='/editing')await page.waitForFunction(path=>new URL(document.querySelector('header [aria-current="page"]').href).pathname===path,path);
    await sameDocument();
   }
   // Wait for idle prefetch, then deliberately slow the foreground request.
@@ -43,7 +44,7 @@ const {chromium}=require('playwright');
   await section('Настройки','/settings');
   await selection.selectOption('1');
   await page.waitForURL(url=>url.searchParams.get('student')==='1');
-  await section('Цели','/goals');
+  await section('Главная','/');
   const count=await page.locator('.goal-card').count();
   await page.locator('#board-add').click();
   const goal=page.locator('#board-create form');
@@ -53,7 +54,7 @@ const {chromium}=require('playwright');
   await goal.getByRole('button',{name:'Добавить',exact:true}).click();
   await page.waitForFunction(count=>document.querySelectorAll('.goal-card').length===count+1,count);
   await sameDocument();
-  await section('Расписание','/schedule');await section('Цели','/goals');
+  await section('Расписание','/schedule');await section('Главная','/');
   if(await page.locator('.goal-card').count()!==count+1)throw Error('Mutation cache was not invalidated');
   const goalsURL=page.url();
   await section('Аналитика','/analytics');const analyticsURL=page.url();
@@ -86,8 +87,8 @@ const {chromium}=require('playwright');
   // Restore scroll when returning through the browser's real history.
   const settingsHistoryURL=page.url();
   const savedY=await page.evaluate(()=>{scrollTo(0,350);return scrollY});
-  await page.evaluate(()=>navigateWithMotion('/goals'));
-  await page.waitForURL('**/goals');
+  await page.evaluate(()=>navigateWithMotion('/'));
+  await page.waitForURL('http://127.0.0.1:18081/');
   await page.goBack();await page.waitForURL(settingsHistoryURL);
   await page.waitForFunction(saved=>Math.abs(scrollY-saved)<2,savedY);
   await sameDocument();
@@ -103,7 +104,7 @@ const {chromium}=require('playwright');
   if(documentRequests.length)throw Error('Internal app navigation requested documents: '+documentRequests.join(', '));
   // An expired login intentionally exits the SPA; login scripts load normally.
   await context.clearCookies();await page.evaluate(()=>window.StudyRouter.clearCache());
-  await page.locator('header nav').getByRole('link',{name:'Цели',exact:true}).click();
+  await page.locator('header nav').getByRole('link',{name:'Главная',exact:true}).click();
   await page.waitForURL('**/login');
   if(await page.locator('.goal-card').count())throw Error('Private view survived logout');
   if(errors.length)throw Error(errors.join('\n'));

@@ -22,7 +22,7 @@ from .config import Settings, setup_logging
 from .db import Database
 from .access import access_allowed
 from .models import User, Subject, Task, Goal, Slot, Activity, Score, Invite, TaskGroup, GroupTask, UserAvatar, GoalSelection, ExamTotal
-from .services import accessible, subject_for, parse_scale, monday, progress, analytics, change_series, edit_activity
+from .services import accessible, subject_for, parse_scale, monday, progress, analytics, completed_work, change_series, edit_activity
 from .account import own_queries, delete_account, remove_catalog_item
 
 
@@ -244,10 +244,10 @@ def create_app(settings=None):
         session.clear()
         return redirect(url_for('login'))
 
-    @app.get('/')
-    def index():
-        return redirect(url_for('page', section='goals'))
+    # Keep legacy GET /goals links readable while building home URLs as /.
+    app.url_map.redirect_defaults = False
 
+    @app.get('/', defaults={'section': 'goals'})
     @app.get('/<section>')
     def page(section):
         if section not in ('plan', 'goals', 'schedule', 'analytics', 'settings', 'editing'):
@@ -275,7 +275,7 @@ def create_app(settings=None):
         if period not in (7, 28, 56, 84, 365):
             raise ValueError('Выберите период аналитики')
         analytics_end = week + timedelta(days=6) if period == 7 else today
-        completed = analytics(g.db, g.user.id, g.student.id, start=week, end=week+timedelta(days=6), weekly_summaries=False) if section == 'goals' else None
+        completed = completed_work(g.db, g.user.id, g.student.id, start=week, end=week+timedelta(days=6)) if section == 'goals' else None
         data = analytics(g.db, g.user.id, g.student.id, start=analytics_end-timedelta(days=period-1), end=analytics_end,
                          summaries=False) if section == 'analytics' else None
         tab = request.args.get('tab', 'works')

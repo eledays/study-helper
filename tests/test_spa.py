@@ -48,10 +48,10 @@ def test_spa_has_the_same_student_access_checks(client):
 
 def test_spa_post_preserves_csrf_validation_and_returns_updated_view(client, db):
     data = {'csrf': 'test-csrf', 'return_section': 'goals', 'subject_id': 1,
-            'kind': 'tasks', 'task_ids': [1], 'target': 5, 'weeks': 1, 'week': '2026-10-19'}
+            'kind': 'tasks', 'task_ids': [1], 'target': 5, 'weeks': 1, 'week': '2026-10-19', 'return_week': '2026-10-19'}
     assert client.post('/goals', data={**data, 'csrf': 'wrong'}, headers=HEADERS).status_code == 400
     response = client.post('/goals', data=data, headers=HEADERS, follow_redirects=True)
-    assert response.status_code == 200 and response.json['url'].startswith('/goals')
+    assert response.status_code == 200 and response.json['url'].startswith('/?')
     assert 'goal-card' in response.json['html']
     with db.session() as session:
         assert len(list(session.scalars(select(Goal)))) == 1

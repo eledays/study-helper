@@ -6,7 +6,7 @@ def test_pwa_resources_are_public_and_worker_has_root_scope(db):
     manifest = client.get('/static/manifest.webmanifest')
     assert manifest.status_code == 200
     data = manifest.json
-    assert data['start_url'] == '/goals' and data['scope'] == '/' and data['display'] == 'standalone'
+    assert data['start_url'] == '/' and data['scope'] == '/' and data['display'] == 'standalone'
     for icon in data['icons']:
         response = client.get(icon['src'])
         assert response.status_code == 200 and response.data.startswith(b'\x89PNG')
