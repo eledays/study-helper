@@ -195,7 +195,7 @@ def router(db, settings):
             elif action == 'goals':
                 await show_goals(message, s, user)
             elif action == 'weekly':
-                await message.answer(weekly_text(s, user.id, local_day(user)), parse_mode='HTML')
+                await message.answer(weekly_text(s, user.id, local_day(user)), parse_mode='HTML', reply_markup=weekly_link(local_day(user), settings.base_url))
             elif action == 'rest':
                 await mark_day(message, s, user, local_day(user))
 
@@ -382,7 +382,7 @@ def router(db, settings):
                         await type_menu(call.message, s, data)
                     if data.get('stage') != 'saved': draft_set(s, user.id, data); return
                 if command in ('goals', 'weekly'):
-                    if command == 'weekly': await call.message.answer(weekly_text(s, user.id, local_day(user)), parse_mode='HTML')
+                    if command == 'weekly': await call.message.answer(weekly_text(s, user.id, local_day(user)), parse_mode='HTML', reply_markup=weekly_link(local_day(user), settings.base_url))
                     else: await show_goals(call.message, s, user)
                     return
                 if command == 'daily':
@@ -621,7 +621,13 @@ def router(db, settings):
     return dp
 
 
-def due_messages(s, user, now):
+def weekly_link(day, base_url):
+    week = day - timedelta(days=day.weekday())
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text='Аналитика за неделю', url=f'{base_url.rstrip("/")}/analytics?period=7&week={week.isoformat()}')]])
+
+
+def due_messages(s, user, now, base_url=None):
     local = now.astimezone(ZoneInfo(user.timezone))
     day = local.date()
     evening = datetime.combine(day, datetime.strptime(user.evening, '%H:%M').time(), ZoneInfo(user.timezone))
@@ -635,7 +641,7 @@ def due_messages(s, user, now):
                 [(bot_text('buttons.record_practice'), f'daily:{day}:practice'), (bot_text('buttons.record_exam'), f'daily:{day}:exam')],
                 [(bot_text('buttons.rest_female' if user.gender == 'female' else 'buttons.rest_male' if user.gender == 'male' else 'buttons.rest_neutral'), f'daily:{day}:rest')]])
         if day.weekday() == 6:
-            yield f'{user.id}:weekly:{day}', weekly_text(s, user.id, day), None
+            yield f'{user.id}:weekly:{day}', weekly_text(s, user.id, day), weekly_link(day, base_url or Settings().base_url)
     if user.reminders:
         for slot in slots:
             start = datetime.combine(day, datetime.strptime(slot.start, '%H:%M').time(), ZoneInfo(user.timezone))
@@ -644,11 +650,11 @@ def due_messages(s, user, now):
                     [(bot_text('buttons.record_exam' if slot.kind == 'exam' else 'buttons.record_practice'), f'slot:{slot.id}')]])
 
 
-async def deliver_due(bot, db, now):
+async def deliver_due(bot, db, now, base_url=None):
     # Exactly one bot process. Persist each successful delivery independently.
     with db.session() as s:
         users = list(s.scalars(select(User).where(User.bot_active.is_(True))))
-        pending = [(user, list(due_messages(s,user,now))) for user in users if access_allowed(s, user.telegram_id)]
+        pending = [(user, list(due_messages(s,user,now,base_url))) for user in users if access_allowed(s, user.telegram_id)]
     for user, messages in pending:
         for key, text, markup in messages:
             with db.session() as s:
@@ -671,11 +677,11 @@ async def deliver_due(bot, db, now):
             with db.session.begin() as s: s.add(Delivery(key=key))
 
 
-async def scheduler(bot, db):
+async def scheduler(bot, db, base_url=None):
     while True:
         try:
             await drain_outbox(bot, db)
-            await deliver_due(bot,db,datetime.now(ZoneInfo('UTC')))
+            await deliver_due(bot,db,datetime.now(ZoneInfo('UTC')),base_url)
             Path('/tmp/study-bot-heartbeat').touch()
         except Exception:
             log.exception('Scheduler cycle failed')
@@ -704,7 +710,7 @@ async def main():
     bot.session.middleware(polling_heartbeat)
     await bot.set_my_commands([BotCommand(command=name, description=bot_text(f'commands.{name}'))
                                for name in ('start', 'practice', 'exam', 'goals', 'weekly', 'rest', 'help', 'cancel')])
-    task = asyncio.create_task(scheduler(bot, db))
+    task = asyncio.create_task(scheduler(bot, db, settings.base_url))
     try:
         await router(db, settings).start_polling(bot, tasks_concurrency_limit=1)
     finally:

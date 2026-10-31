@@ -9,12 +9,15 @@
   <script nonce="{{g.nonce}}">if(!document.documentElement.dataset.fixedTheme)try{const t=localStorage.getItem("theme");document.documentElement.dataset.theme=t||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
   <script src="{{url_for('static',filename='navigation.js')}}"></script>
   <link rel="manifest" href="/static/manifest.webmanifest">
-  <meta name="theme-color" content="#83c650">
+  <meta name="theme-color" content="#626b7c">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="study-bot">
   <link rel="apple-touch-icon" href="/static/icon-180.png">
   <title>study-bot</title>
   <link rel="icon" type="image/svg+xml" sizes="any" href="{{url_for('static',filename='favicon.svg')}}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&amp;display=block" rel="stylesheet">
   <link rel="stylesheet" href="{{url_for('static',filename='style.css')}}">
   <script defer src="{{url_for('static',filename='app.js')}}"></script>
 </head>
@@ -23,7 +26,7 @@
 {% if request.endpoint != 'login' %}<header>
   {% if g.user %}
   <nav aria-label="Разделы">
-    {% for key,label,icon in [('goals','Цели','flag'),('schedule','Расписание','calendar_month'),('analytics','Аналитика','bar_chart'),('editing','Редактирование','edit_note'),('settings','Настройки','settings')] %}
+    {% for key,label,icon in [('goals','Главная','home'),('schedule','Расписание','calendar_month'),('analytics','Аналитика','bar_chart'),('settings','Настройки','settings')] %}
     <a class="{{'active' if section == key}}" aria-label="{{label}}" title="{{label}}" {% if section == key %}aria-current="page"{% endif %} href="{{url_for('page',section=key,student=g.student.id,week=week if week is defined else none)}}">{{ui_icon(icon, 'section-icon')}}<span class="section-label">{{label}}</span></a>
     {% endfor %}
   </nav>

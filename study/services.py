@@ -177,7 +177,7 @@ def change_series(s, model, actor_id, student_id, item_id, scope, changes):
                 setattr(row, key, value)
 
 
-def analytics(s, actor_id, student_id, start=None, end=None, summaries=True):
+def analytics(s, actor_id, student_id, start=None, end=None, summaries=True, weekly_summaries=True):
     user = accessible(s, actor_id, student_id)
     filters = [Activity.student_id == student_id]
     if start is not None: filters.append(Activity.day >= start)
@@ -227,7 +227,7 @@ def analytics(s, actor_id, student_id, start=None, end=None, summaries=True):
                 'kind':a.kind, 'attempts':sum(r.attempted for r in scores if r.activity_id==a.id),
                 'score':sum(r.score for r in scores if r.activity_id==a.id)} for a in activities if summaries and a.kind != 'exam']
     weeks = sorted({monday(a.day) for a in activities if a.kind != 'exam'} |
-                   {g.week for g in s.scalars(select(Goal).where(Goal.student_id == student_id))}) if summaries else []
+                   {g.week for g in s.scalars(select(Goal).where(Goal.student_id == student_id))}) if summaries and weekly_summaries else []
     weekly = [{'day':w.isoformat(), 'attempts':sum(r.attempted for r in scores if by_id[r.activity_id].kind != 'exam' and monday(by_id[r.activity_id].day)==w),
                'goals':progress(s,student_id,w)} for w in weeks]
     return {'exams': exams, 'tasks': stats, 'wellbeing': days, 'history':history, 'weekly':weekly,

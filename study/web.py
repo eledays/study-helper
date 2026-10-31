@@ -272,9 +272,11 @@ def create_app(settings=None):
         goals = progress(g.db, g.student.id, week)
         invite = request.args.get('invite')
         period = int(request.args.get('period', '56'))
-        if period not in (28, 56, 84, 365):
+        if period not in (7, 28, 56, 84, 365):
             raise ValueError('Выберите период аналитики')
-        data = analytics(g.db, g.user.id, g.student.id, start=today-timedelta(days=period-1), end=today,
+        analytics_end = week + timedelta(days=6) if period == 7 else today
+        completed = analytics(g.db, g.user.id, g.student.id, start=week, end=week+timedelta(days=6), weekly_summaries=False) if section == 'goals' else None
+        data = analytics(g.db, g.user.id, g.student.id, start=analytics_end-timedelta(days=period-1), end=analytics_end,
                          summaries=False) if section == 'analytics' else None
         tab = request.args.get('tab', 'works')
         if tab not in ('works', 'plan', 'subjects'):
@@ -301,7 +303,7 @@ def create_app(settings=None):
                 record_totals = {r.activity_id: r for r in g.db.scalars(select(ExamTotal).where(ExamTotal.activity_id.in_(ids)))}
 
         html = render_template('plan.html' if section in ('goals','schedule') else f'{section}.html', section=section, subjects=subjects, tasks=tasks,
-                               slots=slots, goals=goals, week=week, today=today, timedelta=timedelta,
+                               slots=slots, goals=goals, completed=completed, week=week, today=today, analytics_end=analytics_end, timedelta=timedelta,
                                invite=invite, data=data, tab=tab, records=records, record_scores=record_scores, record_totals=record_totals, groups=groups, memberships=memberships, catalog=CATALOG,
                                catalog_by_name={item["label"]: item for item in CATALOG.values()},
                                period=period, record_page=record_page, record_subject=record_subject,

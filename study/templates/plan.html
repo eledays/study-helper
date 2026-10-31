@@ -36,6 +36,22 @@
     {% endfor %}
   {% endif %}
   </div>
+  {% if section == 'goals' %}
+  <section class="completed-week" aria-labelledby="completed-title">
+    <div class="heading"><h2 id="completed-title">Сделано за неделю</h2><a href="{{url_for('page',section='analytics',student=g.student.id,week=week,period=7)}}">Аналитика →</a></div>
+    <p class="muted">Занятий: {{completed.history|length}} · Пробников: {{completed.exams|length}} · Решений заданий: {{completed.history|sum(attribute='attempts')}}</p>
+    {% for n in range(6,-1,-1) %}
+    {% set day=week+timedelta(days=n) %}
+    {% set practices=completed.history|selectattr('day','equalto',day.isoformat())|list %}
+    {% set exams=completed.exams|selectattr('day','equalto',day.isoformat())|list %}
+    {% if practices or exams %}<article class="completed-day"><h3>{{['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'][n]}} <span>{{day.strftime('%d.%m')}}</span></h3>
+    {% for item in practices %}<div class="completed-row">{{ui_icon('check_circle')}}<div><strong>{{item.subject}}</strong><small>Занятие · Решено заданий: {{item.attempts}} · Баллов: {{item.score}}</small></div></div>{% endfor %}
+    {% for item in exams %}<div class="completed-row">{{ui_icon('assignment_turned_in')}}<div><strong>{{item.subject}} · Пробник</strong><small>{{item.primary}} из {{item.maximum}} первичных{% if item.secondary is not none %} · {{item.secondary}} вторичных{% endif %} баллов</small></div></div>{% endfor %}
+    </article>{% endif %}
+    {% endfor %}
+    {% if not completed.history and not completed.exams %}<p class="empty">Пока нет выполненных занятий. Запишите занятие в боте — оно появится здесь.</p>{% endif %}
+  </section>
+  {% endif %}
   <dialog id="week-picker" class="create-dialog week-picker" aria-labelledby="week-picker-title" data-today="{{today}}">
     <div class="dialog-heading"><h2 id="week-picker-title">Выбор недели</h2><button type="button" class="quiet dialog-close" id="week-picker-close" aria-label="Закрыть выбор недели">{{ui_icon('close')}}</button></div>
     <label class="week-date-label">Перейти к дате<input type="date" id="week-picker-date" value="{{week}}" min="2000-01-10" max="2099-12-31"></label>
@@ -68,7 +84,7 @@
   {% endif %}
   </dialog>
     <div class="board-actions">
-      <a class="round-action quiet" id="board-edit" aria-label="Редактировать план" title="Редактировать план" href="{{url_for('page',section='editing',tab='plan',student=g.student.id,week=week)}}">{{ui_icon('edit')}}</a>
+
       <button type="button" class="round-action" id="board-add" aria-label="{{'Добавить цель' if section == 'goals' else 'Добавить занятие'}}" title="{{'Добавить цель' if section == 'goals' else 'Добавить занятие'}}" aria-expanded="false" aria-controls="board-create" aria-haspopup="dialog">{{ui_icon('add')}}</button>
     </div>
 </section>

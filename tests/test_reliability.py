@@ -62,8 +62,8 @@ def test_spa_conflict_returns_validation_error(client):
     assert client.get('/settings').status_code == 200
 
 
-def test_navigation_icons_do_not_require_external_fonts(client):
+def test_navigation_uses_google_rounded_icons(client):
     html = client.get('/goals').text
-    assert 'fonts.googleapis.com' not in html and 'fonts.gstatic.com' not in html
-    assert html.count('class="material-symbols-outlined section-icon"') == 5
-    assert '<svg viewBox="0 0 24 24"' in html
+    assert 'fonts.googleapis.com' in html and 'Material+Symbols+Rounded' in html
+    assert html.count('material-symbols-rounded section-icon') == 4
+    assert 'aria-label="Редактирование"' not in html

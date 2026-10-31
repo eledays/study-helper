@@ -81,7 +81,7 @@ def test_separate_planning_pages_and_short_labels(client,db):
     assert 'Русский язык. Тестовая часть' in goals and 'ЕГЭ 2027' not in goals
     assert 'Разбор ошибок' not in goals and 'Разбор ошибок' in schedule
     assert 'goal-card' not in schedule
-    assert goals.count('id="board-edit"')==1 and 'Изменить цель' not in goals
+    assert goals.count('id="board-edit"')==0 and 'Изменить цель' not in goals
     assert 'class="profile-card profile-name"' in goals
     assert '/logout' not in goals and 'class="brand"' not in goals
     assert '/logout' in client.get('/settings').data.decode()

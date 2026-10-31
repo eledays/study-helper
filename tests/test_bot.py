@@ -481,7 +481,7 @@ def test_no_button_menu_after_cancel_or_unknown_text_but_evening_has_actions(db)
         assert '/help' in h.transport.messages[-1].text
         with db.session() as s:
             messages = list(due_messages(s, s.get(User, 1), datetime(2026, 10, 18, 18, tzinfo=ZoneInfo('UTC'))))
-            assert all(markup is None for key, _, markup in messages if ':weekly:' in key)
+            assert all('period=7&week=2026-10-12' in markup.inline_keyboard[0][0].url for key, _, markup in messages if ':weekly:' in key)
             assert next(markup for key, _, markup in messages if ':daily:' in key) is not None
     asyncio.run(run())
 
@@ -581,7 +581,7 @@ def test_study_suppresses_evening_and_rest_even_with_planned_rest(db):
         messages = list(due_messages(s, user, now))
         assert not any(':daily:' in key for key, _, _ in messages)
         assert any(':weekly:' in key for key, _, _ in messages)
-        assert not any(markup and any(':rest' in b.callback_data for row in markup.inline_keyboard for b in row)
+        assert not any(markup and any(':rest' in (b.callback_data or '') for row in markup.inline_keyboard for b in row)
                        for _, _, markup in messages)
         tomorrow = list(due_messages(s, user, datetime(2026, 10, 18, 16, tzinfo=ZoneInfo('UTC'))))
         assert any(':daily:' in key for key, _, _ in tomorrow)
