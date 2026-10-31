@@ -124,3 +124,18 @@ html[data-loading=true]::before{content:'';position:fixed;inset:0 0 auto;height:
 .completed-week{width:min(924px,calc(100% - 48px));margin:20px auto 110px}.completed-week h2{margin:0}.completed-week .heading>a{font-size:14px}.completed-day{padding:18px 22px;background:var(--surface);border-radius:16px;margin-top:12px}.completed-day h3{margin:0 0 12px}.completed-row{display:flex;gap:12px;align-items:center;padding:10px 0}.completed-row small{display:block;color:var(--muted);font-size:13px}.completed-row strong{font-size:14px}.settings-edit-link{display:block;padding:14px 16px;background:var(--surface);border-radius:12px}
 .planning-board:has(.completed-week) .goals-board{margin:12px auto;padding-bottom:12px}
 @media(max-width:750px){header nav{grid-template-columns:repeat(4,minmax(0,1fr))}.completed-week{width:calc(100% - 32px);margin-top:16px}.completed-week .heading{align-items:center;gap:12px}.completed-week h2{font-size:20px}.completed-day{padding:16px}.planning-board:has(.completed-week) .goals-board{padding-bottom:12px}}
+
+/* Mobile sections remain within thumb reach, below the planning controls. */
+@media(max-width:750px){
+ header{padding:0}
+ header nav{position:fixed;inset:auto 0 0;z-index:20;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;width:100%;height:calc(72px + env(safe-area-inset-bottom));padding:8px 12px calc(8px + env(safe-area-inset-bottom));margin:0;background:var(--paper);border-top:1px solid var(--line)}
+ header nav a{display:flex;flex-direction:column;justify-content:center;gap:4px;min-height:0;padding:5px 2px;border-radius:12px}
+ header nav .section-label{display:block;font-size:10px;line-height:1.2;white-space:nowrap}
+ header nav a.active{color:var(--accent);background:var(--surface)}
+ main{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+ body:has(.board-page){height:auto;min-height:100svh}
+ main.board-page{padding-bottom:calc(156px + env(safe-area-inset-bottom))}
+ .week-switch,.board-actions{bottom:calc(88px + env(safe-area-inset-bottom))}
+ .card-board{padding-bottom:24px}
+ .completed-week{margin-bottom:16px}
+}
