@@ -16,7 +16,7 @@ function navigateWithMotion(destination, direction = 'section') {
 
 window.StudyRouter = (() => {
  const routes = new Set(['/goals','/schedule','/plan','/analytics','/editing','/settings']);
- const cache = new Map(), prefetches = new Map();
+ const cache = new Map(), prefetches = new Map(), prefetchJobs = new Map();
  const MAX_ENTRIES = 10, MAX_BYTES = 2000000, TTL = 10000;
  let ready = false, sequence = 0, epoch = 0, activeRequest, idleTask, loadingTimer;
  let user, version, currentHTML = '', renderedURL = '', mutation = false, pendingPop;
@@ -114,11 +114,13 @@ window.StudyRouter = (() => {
  }
  async function prefetch(url) {
   const target=appURL(url);if(!ready||!target||mutation||document.hidden)return;
-  const key=canonical(target.href);if(getCache(key)||prefetches.has(key)||key===canonical(renderedURL))return;
+  const key=canonical(target.href);if(getCache(key)||key===canonical(renderedURL))return;
+  if(prefetches.has(key))return prefetchJobs.get(key);
   if(prefetches.size>=2)return;
   const controller=new AbortController(),started=epoch;prefetches.set(key,controller);
+  let finish;prefetchJobs.set(key,new Promise(resolve=>{finish=resolve}));
   const timeout=setTimeout(()=>controller.abort(),7000);
-  try{const data=await fetchView(key,controller.signal,true);if(data&&started===epoch&&!controller.signal.aborted)putCache(key,data)}catch(_){}finally{clearTimeout(timeout);if(prefetches.get(key)===controller)prefetches.delete(key)}
+  try{const data=await fetchView(key,controller.signal,true);if(data&&started===epoch&&!controller.signal.aborted)putCache(key,data)}catch(_){}finally{clearTimeout(timeout);if(prefetches.get(key)===controller){prefetches.delete(key);prefetchJobs.delete(key)}finish()}
  }
  function schedulePrefetch() {
   clearTimeout(idleTask);
@@ -242,7 +244,9 @@ window.StudyRouter = (() => {
  const mobileSections=()=>matchMedia('(max-width:750px)').matches;
  function endSwipe(){
   if(!swipe)return;
-  cancelAnimationFrame(swipe.previewFrame);swipe.layer?.remove();swipe=null;
+  const state=swipe;swipe=null;
+  clearTimeout(state.watchdog);state.animations?.forEach(animation=>animation.cancel());state.layer?.remove();
+  if(state.owner?.hasPointerCapture(state.pointer))state.owner.releasePointerCapture(state.pointer);
  }
  function snapshot(main,offset=0){
   const copy=main.cloneNode(true);
@@ -252,7 +256,7 @@ window.StudyRouter = (() => {
   return copy;
  }
  document.addEventListener('pointerdown',event=>{
-  if(swipe?.settling)return;
+  if(swipe?.settling){endSwipe();return}
   endSwipe();
   if(!ready||!mobileSections()||mutation||editing()||!event.isPrimary||event.button!==0||document.documentElement.dataset.loading)return;
   if(!event.target.closest('main')||event.target.closest('a,button,input,select,textarea,form,dialog,.table-scroll,.analytics-chart,.rhythm-calendar'))return;
@@ -260,15 +264,18 @@ window.StudyRouter = (() => {
   if(touch.clientX<24||touch.clientX>innerWidth-24)return;
   const links=[...document.querySelectorAll('header nav a')],index=links.findIndex(link=>link.hasAttribute('aria-current'));
   if(index<0)return;
-  swipe={pointer:event.pointerId,x:touch.clientX,y:touch.clientY,dx:0,time:performance.now(),links,index,width:innerWidth,scroll:scrollY};
+  swipe={pointer:event.pointerId,x:touch.clientX,y:touch.clientY,dx:0,time:performance.now(),links,index,width:innerWidth,scroll:scrollY,owner:event.target.closest('main')};
+  swipe.watchdog=setTimeout(endSwipe,8000);
  },{passive:true});
  document.addEventListener('pointermove',event=>{
   const state=swipe;if(!state||state.settling||state.pointer!==event.pointerId)return;
-  if(editing()){endSwipe();return}
+  if(editing()||!mobileSections()){endSwipe();return}
+  clearTimeout(state.watchdog);state.watchdog=setTimeout(endSwipe,8000);
   const touch=event,dx=touch.clientX-state.x,dy=touch.clientY-state.y;
   if(!state.layer){
    if(Math.max(Math.abs(dx),Math.abs(dy))<8)return;
    if(Math.abs(dx)<Math.abs(dy)*1.3){endSwipe();return}
+   state.owner.setPointerCapture(event.pointerId);
    state.layer=document.createElement('div');state.layer.className='section-swipe';state.layer.inert=true;state.layer.setAttribute('aria-hidden','true');
    state.current=document.createElement('div');state.current.className='section-swipe-pane';state.current.append(snapshot(document.querySelector('main'),state.scroll));
    state.next=document.createElement('div');state.next.className='section-swipe-pane';state.layer.append(state.current,state.next);document.body.append(state.layer);
@@ -280,11 +287,11 @@ window.StudyRouter = (() => {
    if(link){
     const fill=()=>{
      if(swipe!==state||state.step!==step)return;
-     const cached=getCache(canonical(link.href));if(!cached){state.previewFrame=requestAnimationFrame(fill);return}
+     const cached=getCache(canonical(link.href));if(!cached)return
      const main=new DOMParser().parseFromString(cached.html,'text/html').querySelector('main');
      if(main)state.next.replaceChildren(snapshot(main));
     };
-    prefetch(link.href);fill();
+    fill();prefetch(link.href).then(fill).catch(()=>{});
    }
   }
   state.dx=link?Math.max(-state.width,Math.min(state.width,dx)):dx*.18;
@@ -298,13 +305,20 @@ window.StudyRouter = (() => {
   const dx=state.dx,elapsed=performance.now()-state.time;
   const commit=state.destination&&(Math.abs(dx)>state.width*.25||(Math.abs(dx)>48&&Math.abs(dx)/elapsed>.45));
   const target=commit?-state.step*state.width:0,duration=reducedMotion()?0:190;
-  await Promise.all([state.current.animate([{transform:`translateX(${dx}px)`},{transform:`translateX(${target}px)`}],{duration,fill:'forwards',easing:'cubic-bezier(.2,.7,.2,1)'}).finished,
-   state.next.animate([{transform:`translateX(${dx+state.step*state.width}px)`},{transform:`translateX(${target+state.step*state.width}px)`}],{duration,fill:'forwards',easing:'cubic-bezier(.2,.7,.2,1)'}).finished]);
-  if(swipe!==state)return;
-  if(commit)await navigate(state.destination,'section');
-  if(swipe===state)endSwipe();
+  try{
+   state.animations=[state.current.animate([{transform:`translateX(${dx}px)`},{transform:`translateX(${target}px)`}],{duration,fill:'forwards',easing:'cubic-bezier(.2,.7,.2,1)'}),
+    state.next.animate([{transform:`translateX(${dx+state.step*state.width}px)`},{transform:`translateX(${target+state.step*state.width}px)`}],{duration,fill:'forwards',easing:'cubic-bezier(.2,.7,.2,1)'})];
+   await Promise.all(state.animations.map(animation=>animation.finished));
+   if(swipe!==state)return;
+   // Release the visual layer before any network wait, even when navigation fails.
+   endSwipe();
+   if(commit)await navigate(state.destination,'section');
+  }catch(_){/* Cancellation and interrupted gestures always release the view. */}
+  finally{if(swipe===state)endSwipe()}
  },{passive:true});
  document.addEventListener('pointercancel',endSwipe,{passive:true});
+ document.addEventListener('lostpointercapture',event=>{if(swipe?.pointer===event.pointerId&&!swipe.settling)endSwipe()});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape')endSwipe()});
  document.addEventListener('study:view',endSwipe);
  window.addEventListener('resize',endSwipe);
  window.addEventListener('blur',endSwipe);
