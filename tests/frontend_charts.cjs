@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const source=fs.readFileSync('study/static/app.js','utf8');
-const chart=source.slice(source.indexOf('function chart('),source.indexOf('const themeButton'));
+const chart=source.slice(source.indexOf('function chart('),source.indexOf("document.querySelectorAll('form:not"));
 const counts={};
 class Node{constructor(){this.style={};this.clientWidth=500}setAttribute(){}append(){}}
 const document={createElementNS(ns,tag){counts[tag]=(counts[tag]||0)+1;return new Node()},createElement:()=>new Node(),createTextNode:()=>new Node()};

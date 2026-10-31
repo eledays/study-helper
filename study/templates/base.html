@@ -1,15 +1,14 @@
-{% from 'macros.html' import icon as ui_icon %}
+{% from 'macros.html' import icon as ui_icon, profile_controls with context %}
 {% set partial = request.endpoint == 'page' and request.headers.get('X-Study-Navigation') == '1' %}
 {% if not partial %}
 <!doctype html>
-<html lang="ru"{% if request.endpoint == 'login' %} data-theme="dark" data-fixed-theme="dark"{% endif %}>
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <script nonce="{{g.nonce}}">if(!document.documentElement.dataset.fixedTheme)try{const t=localStorage.getItem("theme");document.documentElement.dataset.theme=t||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){}</script>
   <script src="{{url_for('static',filename='navigation.js')}}"></script>
   <link rel="manifest" href="/static/manifest.webmanifest">
-  <meta name="theme-color" content="#626b7c">
+  <meta name="theme-color" content="#111111">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="study-bot">
   <link rel="apple-touch-icon" href="/static/icon-180.png">
@@ -21,7 +20,7 @@
   <link rel="stylesheet" href="{{url_for('static',filename='style.css')}}">
   <script defer src="{{url_for('static',filename='app.js')}}"></script>
 </head>
-<body data-user-id="{{g.user.id if g.user else ''}}" data-view-version="{{view_version}}">
+<body class="{{'login-page' if request.endpoint == 'login' else ''}}" data-user-id="{{g.user.id if g.user else ''}}" data-view-version="{{view_version}}">
 {% endif %}
 {% if request.endpoint != 'login' %}<header>
   {% if g.user %}
@@ -31,24 +30,12 @@
     {% endfor %}
   </nav>
   {% endif %}
-  <button type="button" class="quiet theme-toggle" id="theme-toggle" aria-label="Переключить тему">Тема</button>
   {% if g.user %}
-  <div class="profile-cards{{' teacher-profile' if g.user.is_teacher}}" aria-label="Профиль">
-    <a class="profile-card profile-name" title="{{g.user.name}}" href="{{url_for('page',section='settings')}}">{% if avatar_url or avatar_fallback_url %}<img class="profile-avatar" src="{{avatar_url or avatar_fallback_url}}" data-fallback="{{avatar_fallback_url if avatar_url else ''}}" alt="" width="28" height="28" referrerpolicy="no-referrer">{% endif %}<span class="profile-initial" aria-hidden="true">{{g.user.name[:1] or '?'}}</span><span class="profile-label">{{g.user.name}}</span></a>
-    {% if g.user.is_teacher or pupils or g.student.id != g.user.id %}
-    <div class="profile-card profile-student">
-      <label class="mobile-plan-label" for="student-switch">Показывать план</label>
-      <select aria-label="Выбранный ученик" id="student-switch">
-        <option value="{{g.user.id}}" {{'selected' if g.student.id == g.user.id}}>Мой план</option>
-        {% for pupil in pupils %}<option value="{{pupil.id}}" {{'selected' if g.student.id == pupil.id}}>{{pupil.name}}</option>{% endfor %}
-      </select>
-    </div>
-    {% endif %}
-  </div>
+  {{profile_controls('student-switch')}}
   {% endif %}
 </header>
 {% endif %}
-<main class="{{'board-page' if section in ('goals','schedule')}}">
+<main data-student-id="{{g.student.id if g.user else ''}}" class="{{'board-page' if section in ('goals','schedule')}}">
   {% for category,message in ([] if request.headers.get('X-Study-Prefetch') == '1' else get_flashed_messages(with_categories=true)) %}<p class="notice {{category}}" role="status">{{message.rstrip('.')|display_label}}</p>{% endfor %}
   {% block content %}{% endblock %}
 </main>

@@ -5,3 +5,18 @@
 {% macro icon(name, extra='') -%}
 <span class="material-symbols-outlined material-symbols-rounded {{extra}}" aria-hidden="true">{{name}}</span>
 {%- endmacro %}
+
+{% macro profile_controls(control_id) %}
+  <div class="profile-cards{{' teacher-profile' if g.user.is_teacher}}" aria-label="Профиль">
+    <a class="profile-card profile-name" title="{{g.user.name}}" href="{{url_for('page',section='settings')}}">{% if avatar_url or avatar_fallback_url %}<img class="profile-avatar" src="{{avatar_url or avatar_fallback_url}}" data-fallback="{{avatar_fallback_url if avatar_url else ''}}" alt="" width="28" height="28" referrerpolicy="no-referrer">{% endif %}<span class="profile-initial" aria-hidden="true">{{g.user.name[:1] or '?'}}</span><span class="profile-label">{{g.user.name}}</span></a>
+    {% if g.user.is_teacher or pupils or g.student.id != g.user.id %}
+    <div class="profile-card profile-student">
+      <label class="mobile-plan-label" for="{{control_id}}">Показывать план</label>
+      <select aria-label="Выбранный ученик" id="{{control_id}}" data-student-switch>
+        <option value="{{g.user.id}}" {{'selected' if g.student.id == g.user.id}}>Мой план</option>
+        {% for pupil in pupils %}<option value="{{pupil.id}}" {{'selected' if g.student.id == pupil.id}}>{{pupil.name}}</option>{% endfor %}
+      </select>
+    </div>
+    {% endif %}
+  </div>
+{% endmacro %}

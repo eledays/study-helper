@@ -26,11 +26,6 @@ function chart(container,rows,series,max){
  rows.forEach((row,i)=>{if((row.day===labelDays[0]||row.day===labelDays.at(-1)||row.day===labelDays[Math.floor((labelDays.length-1)/2)]||labelDays.length<5)&&!labelled.has(row.day)){labelled.add(row.day);el('text',{x:x(i),y:218,'text-anchor':'middle','font-size':12,fill:'var(--muted)'},row.day.slice(5).split('-').reverse().join('.'))}});container.append(svg);
  const legend=document.createElement('p');legend.className='chart-legend';series.forEach(([,label,color])=>{const item=document.createElement('span'),line=document.createElement('i');line.style.background=color;item.append(line,document.createTextNode(label));legend.append(item)});container.append(legend);
 }
-const themeButton=document.getElementById('theme-toggle');
-function updateThemeButton(){const dark=document.documentElement.dataset.theme==='dark';if(themeButton){themeButton.textContent=dark?'Светлая тема':'Тёмная тема';themeButton.setAttribute('aria-pressed',String(dark));}}
-updateThemeButton();
-themeButton?.addEventListener('click',()=>{document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('theme',document.documentElement.dataset.theme)}catch(e){}updateThemeButton()});
-onGlobal(matchMedia('(prefers-color-scheme: dark)'),'change',event=>{if(document.documentElement.dataset.fixedTheme)return;try{if(localStorage.getItem('theme'))return}catch(e){}document.documentElement.dataset.theme=event.matches?'dark':'light';updateThemeButton()});
 document.querySelectorAll('form:not([data-goal-selection])').forEach(form=>{
  const subject=form.querySelector('select[name="subject_id"]');if(!subject)return;
  const task=form.querySelector('select[name="task_id"]'),kind=form.querySelector('select[name="kind"]'),fieldset=form.querySelector('fieldset');
@@ -42,12 +37,12 @@ document.querySelectorAll('form:not([data-goal-selection])').forEach(form=>{
  }
  subject.addEventListener('change',sync);kind?.addEventListener('change',sync);sync();
 });
-document.getElementById('student-switch')?.addEventListener('change',event=>{
+document.querySelectorAll('[data-student-switch]').forEach(control=>control.addEventListener('change',event=>{
  const select=event.target,url=new URL(location.href);url.searchParams.set('student',select.value);
  // Only a rendered server response may commit a new student's context.
  select.value=[...select.options].find(option=>option.defaultSelected)?.value||select.options[0].value;
  navigateWithMotion(url.toString());
-});
+}));
 function wrapTables(root) {
  root.querySelectorAll('table').forEach(table=>{if(table.parentElement.classList.contains('table-scroll'))return;const wrapper=document.createElement('div');wrapper.className='table-scroll';table.before(wrapper);wrapper.append(table)});
 }
@@ -252,28 +247,6 @@ document.querySelectorAll('.record-editor-body[data-editor-url]').forEach(body=>
  if(details.open)load();
 });
 
-const installButton = document.getElementById('install-app');
-if (installButton) installButton.hidden = !window.studyInstallPrompt;
-installButton?.addEventListener('click', async () => {
- if (!window.studyInstallPrompt) return;
- await window.studyInstallPrompt.prompt(); window.studyInstallPrompt = null; installButton.hidden = true;
-});
-
-// Keep desktop controls in the header and place them in mobile settings.
-const settingsLayout = matchMedia('(max-width: 750px)');
-const settingsControls = document.getElementById('mobile-settings-controls');
-const headerControls = [...document.querySelectorAll('header > .theme-toggle, header > .profile-cards')].map(node => {
- const marker = document.createComment('desktop-control'); node.before(marker); return {node, marker};
-});
-function syncSettingsControls() {
- headerControls.forEach(({node, marker}) => {
-  if (settingsLayout.matches && settingsControls) settingsControls.append(node);
-  else marker.after(node);
- });
-}
-onGlobal(settingsLayout,'change', syncSettingsControls); syncSettingsControls();
-
-
 const weekPicker = document.getElementById('week-picker');
 const weekToggle = document.getElementById('week-picker-toggle');
 if (weekPicker && weekToggle) {
@@ -326,11 +299,3 @@ if (weekPicker && weekToggle) {
 };
 window.initializeStudyView();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', {updateViaCache:'none'}).catch(() => {});
-window.addEventListener('beforeinstallprompt', event => {
- event.preventDefault(); window.studyInstallPrompt = event;
- const button = document.getElementById('install-app'); if (button) button.hidden = false;
-});
-window.addEventListener('appinstalled', () => {
- window.studyInstallPrompt = null;
- const button = document.getElementById('install-app'); if (button) button.hidden = true;
-});

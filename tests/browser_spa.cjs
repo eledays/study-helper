@@ -36,7 +36,7 @@ const {chromium}=require('playwright');
   if(cachedMs>250)throw Error('Prefetched view did not render immediately: '+cachedMs);
   await sameDocument();
   await page.unroute('**/settings?**');
-  const selection=page.locator('#student-switch');
+  const selection=page.locator('#settings-student-switch');
   await selection.selectOption('2');
   await page.waitForURL(url=>url.searchParams.get('student')==='2');
   await section('Расписание','/schedule');

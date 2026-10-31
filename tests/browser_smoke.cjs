@@ -68,12 +68,12 @@ const {chromium}=require('playwright');
     await page.goto('http://127.0.0.1:18081'+route);
     if(!await page.locator('header > nav').isVisible())throw Error('Sections not in header');
     if(width<=750){
-     if(await page.locator('header nav .section-icon:visible').count()!==5||await page.locator('header nav .section-label:visible').count())throw Error('Mobile section icons missing');
+     if(await page.locator('header nav .section-icon:visible').count()!==4||await page.locator('header nav .section-label:visible').count()!==4)throw Error('Mobile section icons missing');
      if(await page.locator('header nav').evaluate(node=>node.scrollWidth>node.clientWidth))throw Error('Section icons do not fit');
-     if(await page.locator('header > .theme-toggle').isVisible()||await page.locator('header > .profile-cards').isVisible())throw Error('Personal controls remain in mobile header');
-     if(route==='/settings'&&(!await page.locator('#mobile-settings-controls #theme-toggle').isVisible()||!await page.locator('#mobile-settings-controls #student-switch').isVisible()))throw Error('Mobile settings controls missing');
+     if(await page.locator('header > .profile-cards').isVisible())throw Error('Personal controls remain in mobile header');
+     if(route==='/settings'&&!await page.locator('#settings-student-switch').isVisible())throw Error('Mobile settings controls missing');
     }else{
-     if(!await page.locator('header > .theme-toggle').isVisible()||!await page.locator('header > .profile-cards').isVisible())throw Error('Desktop controls changed');
+     if(!!await page.locator('header > .profile-cards').isVisible())throw Error('Desktop controls changed');
     }
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
     if(overflow){
@@ -110,7 +110,7 @@ const {chromium}=require('playwright');
   // Mobile personal controls are available in settings and preserve plan context.
   await page.getByRole('link',{name:'Настройки',exact:true}).click();
   await page.waitForURL('**/settings?**');
-  const selector=page.locator('#student-switch');
+  const selector=page.locator('#settings-student-switch');
   await selector.selectOption('2');
   await page.waitForURL(url=>url.searchParams.get('student')==='2');
   if(await selector.inputValue()!=='2')throw Error('Pupil plan selection lost');
@@ -145,9 +145,7 @@ const {chromium}=require('playwright');
   if(page.url()!==beforeVertical)throw Error('Vertical scroll switched week');
   await page.getByRole('link',{name:'Настройки',exact:true}).click();
   await page.waitForURL('**/settings?**');
-  const oldTheme=await page.locator('html').getAttribute('data-theme');
-  await page.locator('#mobile-settings-controls #theme-toggle').click();
-  if(await page.locator('html').getAttribute('data-theme')===oldTheme)throw Error('Theme toggle failed in mobile settings');
+  if(await page.locator('#theme-toggle').count())throw Error('Theme switch must not exist');
   await selector.selectOption('1');
   await page.waitForURL(url=>url.searchParams.get('student')==='1');
   await page.screenshot({path:'/tmp/study-mobile-settings.png'});
@@ -175,8 +173,8 @@ const {chromium}=require('playwright');
   await page.getByRole('link',{name:'Настройки',exact:true}).click();
   await page.waitForURL('**/settings?**');
   await page.setViewportSize({width:1280,height:844});
-  await page.waitForFunction(()=>document.querySelector('header > #theme-toggle')&&document.querySelector('header > .profile-cards'));
-  if(!await page.locator('header > nav').isVisible()||!await page.locator('header > #theme-toggle').isVisible())throw Error('Desktop resize did not restore controls');
+  await page.waitForFunction(()=>document.querySelector('header > .profile-cards'));
+  if(!await page.locator('header > nav').isVisible())throw Error('Desktop resize did not restore controls');
   await page.addInitScript(()=>{
    const original=window.matchMedia.bind(window);
    window.matchMedia=query=>query==='(display-mode: standalone)'?{matches:true}:original(query);

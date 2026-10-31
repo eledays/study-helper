@@ -154,11 +154,20 @@ def test_teacher_role_controls_settings_and_invites(client, db):
     assert client.post('/invite', data={'csrf': 'test-csrf'}).status_code == 302
 
 
-def test_login_has_fixed_dark_theme(client):
+def test_only_dark_theme_and_combined_account_settings(client):
     page = client.get('/login').text
-    assert 'data-theme="dark" data-fixed-theme="dark"' in page
     assert 'id="theme-toggle"' not in page
-    assert 'id="theme-toggle"' in client.get('/settings').text
+    settings = client.get('/settings').text
+    assert 'theme-toggle' not in settings and 'prefers-color-scheme' not in settings
+    assert '>Аккаунт</h2>' in settings
+    assert settings.index('action="/profile"') < settings.index('class="settings-plan-card"')
+    assert 'id="account-controls"' in settings
+    with client.session_transaction() as session: session['user_id'] = 2
+    assert 'data-student-switch' in client.get('/settings').text
+    assert '>Приложение</h2>' not in settings and 'install-app' not in settings
+    css = client.get('/static/style.css').text
+    assert 'color-scheme:dark' in css and 'color-scheme:light' not in css
+
 
 
 def test_avatar_fallback_is_authenticated_private_and_does_not_expose_token(db, monkeypatch):
