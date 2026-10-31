@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="analytics-layout" data-today="{{analytics_end}}">
+  <h1 class="page-title">Аналитика</h1>
   <div class="analytics-toolbar"><label for="analytics-period">Период</label><select id="analytics-period"><option value="7" {{'selected' if period == 7}}>Выбранная неделя</option><option value="28" {{'selected' if period == 28}}>4 недели</option><option value="56" {{'selected' if period == 56}}>8 недель</option><option value="84" {{'selected' if period == 84}}>12 недель</option><option value="365" {{'selected' if period == 365}}>Год</option></select></div>
-  {% if period == 7 %}<h1>Неделя {{week.strftime('%d.%m.%Y')}} — {{analytics_end.strftime('%d.%m.%Y')}}</h1>{% endif %}
+  {% if period == 7 %}<p class="analytics-week-label muted">{{week.strftime('%d.%m.%Y')}} — {{analytics_end.strftime('%d.%m.%Y')}}</p>{% endif %}
   <div class="analytics-top">
     <section class="analytics-card" aria-labelledby="rhythm-title">
       <div class="card-heading"><h2 id="rhythm-title">Ритм подготовки</h2><select id="rhythm-subject" aria-label="Предмет для ритма подготовки"><option value="all">Все предметы</option>{% for subject in subjects %}<option value="{{subject.id}}">{{subject.name|display_label}}</option>{% endfor %}</select></div>

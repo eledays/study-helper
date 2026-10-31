@@ -3,6 +3,7 @@
 {% from 'macros.html' import hidden,scope,subjects_select with context %}
 {% block content %}
 <div class="editing-layout">
+  <h1 class="page-title">Редактирование</h1>
   <nav class="section-tabs" aria-label="Что редактировать">
     {% for key,label in [('works','Работы'),('plan','Цели и расписание'),('subjects','Предметы и задания')] %}
     <a class="{{'active' if tab == key}}" {% if tab == key %}aria-current="page"{% endif %} href="{{url_for('page',section='editing',tab=key,student=g.student.id,week=week)}}">{{label}}</a>

@@ -77,7 +77,7 @@ def test_separate_planning_pages_and_short_labels(client,db):
         s.add(Slot(student_id=1,subject_id=subject.id,day=date(2026,10,12),start='16:00',end='17:00',title='Разбор ошибок',series='ui'))
     goals=client.get('/goals?week=2026-10-12').data.decode()
     schedule=client.get('/schedule?week=2026-10-12').data.decode()
-    assert '<h1>' not in goals and '<h1>' not in schedule
+    assert '>Главная</h1>' in goals and '>Расписание</h1>' in schedule
     assert 'Русский язык. Тестовая часть' in goals and 'ЕГЭ 2027' not in goals
     assert 'Разбор ошибок' not in goals and 'Разбор ошибок' in schedule
     assert 'goal-card' not in schedule

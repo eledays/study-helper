@@ -174,3 +174,15 @@ html[data-loading=true]::before{content:'';position:fixed;inset:0 0 auto;height:
 .section-swipe-pane .board-actions,.section-swipe-pane .week-switch,.section-swipe-pane dialog{display:none!important}
 @media(prefers-reduced-transparency:reduce){header nav{background:var(--paper)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}
 @media(max-width:750px){main{touch-action:pan-y pinch-zoom}.planning-board:has(.completed-week) .board-card>strong{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;overflow:hidden;min-height:36px}.planning-board:has(.completed-week) .goals-board:empty{display:none}}
+
+/* Consistent section headings and shared glass treatment for the week control. */
+.page-title{font-size:28px;font-weight:650;line-height:1.2;letter-spacing:-.7px;margin:12px 0 28px}
+.board-title{flex:none;width:min(924px,calc(100% - 48px));margin:24px auto 12px}
+@media(max-width:750px){
+ .page-title{font-size:26px;margin:12px 0 24px}
+ .board-title{width:calc(100% - 32px);margin:12px auto 20px}
+ .settings-heading .page-title{margin:0}
+ .week-switch time{border:1px solid rgb(255 255 255 / .65);background:rgb(255 255 255 / .76);box-shadow:0 6px 28px rgb(0 0 0 / .09);backdrop-filter:blur(24px) saturate(1.25);-webkit-backdrop-filter:blur(24px) saturate(1.25);border-radius:18px}
+ html[data-theme=dark] .week-switch time{background:rgb(28 28 28 / .76);border-color:rgb(255 255 255 / .12);box-shadow:0 6px 28px rgb(0 0 0 / .24)}
+}
+@media(prefers-reduced-transparency:reduce){.week-switch time{background:var(--paper)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}
