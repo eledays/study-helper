@@ -119,7 +119,7 @@ class TaskGroup(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     subject_id: Mapped[int] = mapped_column(ForeignKey('subjects.id'))
     name: Mapped[str]
-    kind: Mapped[str | None]  # test / second for standard groups, NULL for custom groups
+    kind: Mapped[str | None]  # full / test / second for standard groups, NULL for custom groups
 
 class GroupTask(Base):
     __tablename__ = 'group_tasks'

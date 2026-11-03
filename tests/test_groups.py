@@ -21,7 +21,7 @@ def test_groups_overlap_and_survive_restart(db):
     with reopened.session() as s:
         assert {t.id for t in group_tasks(s,group_id)}=={1,2}
         assert s.get(Task,1).name=='№1'
-        assert len(list(s.scalars(select(TaskGroup).where(TaskGroup.subject_id==1))))==3
+        assert len(list(s.scalars(select(TaskGroup).where(TaskGroup.subject_id==1))))==4
 
 
 def test_group_subject_validation(db):

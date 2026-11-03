@@ -39,6 +39,8 @@ def remove_catalog_item(s, student_id, model, item):
     if s.get(Draft, student_id):
         raise ValueError('Сначала завершите ввод в боте или выполните /cancel')
     if model is TaskGroup:
+        if item.kind == 'full':
+            raise ValueError('Полный вариант — обязательная группа и не удаляется')
         if s.scalar(select(GoalSelection.goal_id).where(GoalSelection.group_id == item.id).limit(1)):
             raise ValueError('Группа используется в целях. Сначала удалите эти цели')
     elif model is Task:

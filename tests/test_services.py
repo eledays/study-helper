@@ -9,7 +9,7 @@ DAY = date(2026, 10, 12)
 def record(s, kind='practice', values=None, key='one'):
     return record_activity(s, 1, 1, 1, DAY, kind, values or {3: 0}, key)
 
-def test_zero_score_counts_and_exam_separate(db):
+def test_zero_scores_and_full_variants_contribute_to_goals(db):
     with db.session.begin() as s:
         s.add_all([Goal(student_id=1, subject_id=1, kind='second', week=DAY, target=5, series='a'),
                    Goal(student_id=1, subject_id=1, task_id=3, kind='task', week=DAY, target=5, series='b'),
@@ -17,7 +17,7 @@ def test_zero_score_counts_and_exam_separate(db):
         record(s)
         record(s, 'exam', {1: 1, 2: 2, 3: None}, 'exam')
         record(s, 'test', {1: 0, 2: 0}, 'test')
-        assert [r['done'] for r in progress(s, 1, DAY)] == [1, 1, 1]
+        assert [r['done'] for r in progress(s, 1, DAY)] == [1, 1, 2]
 
 def test_snapshot_and_missing_scale(db):
     with db.session.begin() as s:
@@ -96,7 +96,7 @@ def test_weekly_report_has_goal_cards_and_secondary_exam_scores(db):
         text = weekly_text(s, 1, DAY + timedelta(days=3))
         assert text.startswith(bot_text('weekly.heading') + '\n\n' + bot_text('weekly.goals') + '\n')
         assert bot_text('weekly.goals') in text
-        assert '🟩🟩🟩⬜️⬜️ 50% - Математика &lt;&amp;&gt;. №1' in text
+        assert '🟩🟩🟩🟩🟩 100% - Математика &lt;&amp;&gt;. №1' in text
         assert bot_text('weekly.statistics') + '\nДней с занятиями: 1\nДней отдыха: 3' in text
         assert bot_text('weekly.exams') in text
         assert 'Математика &lt;&amp;&gt;' in text and '(понедельник): 60' in text

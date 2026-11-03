@@ -58,6 +58,8 @@ def record_activity(s, actor_id, student_id, subject_id, day, kind, values, requ
     normalized = {int(k): v for k, v in values.items()}
     if any(k not in task_map for k in normalized):
         raise UserMessageError(bot_text('errors.foreign_task'))
+    if task_map and set(normalized) == set(task_map):
+        kind = 'exam'
     if kind == 'test' and set(normalized) != {t.id for t in standard_tasks(s, subject_id, 'test')}:
         raise UserMessageError(bot_text('errors.full_test'))
     if kind == 'exam':
@@ -123,7 +125,7 @@ def record_exam_total(s, actor_id, student_id, subject_id, day, primary, request
 def progress(s, student_id, week):
     goals = list(s.scalars(select(Goal).where(Goal.student_id == student_id, Goal.week == monday(week))))
     activities = list(s.scalars(select(Activity).where(Activity.student_id == student_id,
-        Activity.day >= monday(week), Activity.day < monday(week) + timedelta(days=7), Activity.kind != 'exam')))
+        Activity.day >= monday(week), Activity.day < monday(week) + timedelta(days=7))))
     scores = list(s.scalars(select(Score).where(Score.activity_id.in_([a.id for a in activities])))) if activities else []
     by_id = {a.id: a for a in activities}
     tasks = {t.id: t for t in s.scalars(select(Task).join(Subject).where(Subject.student_id == student_id))}
@@ -135,7 +137,9 @@ def progress(s, student_id, week):
             group = s.get(TaskGroup, selection.group_id) if selection and selection.group_id else None
             selected_ids = {t.id for t in group_tasks(s, group.id)} if group else set(selection.task_ids if selection else [])
             relevant = [sc for sc in scores if sc.attempted and sc.task_id in selected_ids and by_id[sc.activity_id].subject_id == g.subject_id]
-            if group and selection.metric == 'sets':
+            if group and group.kind == 'full' and selection.metric == 'sets':
+                count = sum(a.subject_id == g.subject_id and a.kind == 'exam' for a in activities)
+            elif group and selection.metric == 'sets':
                 attempted = {}
                 for sc in relevant:
                     attempted.setdefault(sc.activity_id, set()).add(sc.task_id)
@@ -145,7 +149,7 @@ def progress(s, student_id, week):
             label = group.name if group else ', '.join(tasks[task_id].name for task_id in sorted(selected_ids) if task_id in tasks) or bot_text('goals.tasks_label')
         elif g.kind == 'test':
             required = {t.id for t in standard_tasks(s, g.subject_id, 'test')}
-            count = sum(a.subject_id == g.subject_id and a.kind == 'test' and required <= {sc.task_id for sc in scores if sc.activity_id == a.id and sc.attempted} for a in activities)
+            count = sum(a.subject_id == g.subject_id and a.kind in ('test', 'exam') and required <= {sc.task_id for sc in scores if sc.activity_id == a.id and sc.attempted} for a in activities)
             label = bot_text('goals.test_label')
         else:
             second_ids = {t.id for t in standard_tasks(s, g.subject_id, 'second')} if g.kind != 'task' else set()
@@ -155,6 +159,26 @@ def progress(s, student_id, week):
         result.append({'id': g.id, 'label': f'{subjects[g.subject_id]}. {label}', 'done': count,
                        'target': g.target, 'percent': min(100, round(count / g.target * 100))})
     return result
+
+
+def normalize_full_variants(s, dry_run=False):
+    """Conservatively adopt old complete records; keep their historical scores/scales."""
+    subject_tasks = {}
+    for task in s.scalars(select(Task)):
+        subject_tasks.setdefault(task.subject_id, set()).add(task.id)
+    matched = []
+    # One grouped read avoids a score query for every old activity.
+    saved = {}
+    for activity_id, task_id in s.execute(select(Score.activity_id, Score.task_id)
+            .join(Activity).where(Activity.kind != 'exam')):
+        saved.setdefault(activity_id, set()).add(task_id)
+    for activity in s.scalars(select(Activity).where(Activity.kind != 'exam')):
+        ids = subject_tasks.get(activity.subject_id)
+        if ids and saved.get(activity.id) == ids:
+            matched.append(activity.id)
+            if not dry_run:
+                activity.kind = 'exam'
+    return matched
 
 
 def change_series(s, model, actor_id, student_id, item_id, scope, changes):
@@ -249,9 +273,9 @@ def analytics(s, actor_id, student_id, start=None, end=None, summaries=True, wee
     history = [{'id': a.id, 'day': a.day.isoformat(), 'subject':subjects[a.subject_id],
                 'kind':a.kind, 'attempts':sum(r.attempted for r in scores if r.activity_id==a.id),
                 'score':sum(r.score for r in scores if r.activity_id==a.id)} for a in activities if summaries and a.kind != 'exam']
-    weeks = sorted({monday(a.day) for a in activities if a.kind != 'exam'} |
+    weeks = sorted({monday(a.day) for a in activities} |
                    {g.week for g in s.scalars(select(Goal).where(Goal.student_id == student_id))}) if summaries and weekly_summaries else []
-    weekly = [{'day':w.isoformat(), 'attempts':sum(r.attempted for r in scores if by_id[r.activity_id].kind != 'exam' and monday(by_id[r.activity_id].day)==w),
+    weekly = [{'day':w.isoformat(), 'attempts':sum(r.attempted for r in scores if monday(by_id[r.activity_id].day)==w),
                'goals':progress(s,student_id,w)} for w in weeks]
     return {'exams': exams, 'tasks': stats, 'wellbeing': days, 'history':history, 'weekly':weekly,
             'subjects': [{'id': key, 'name': value} for key, value in subjects.items()],

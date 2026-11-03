@@ -16,7 +16,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiohttp import ClientError
 from python_socks import ProxyError
 from .presentation import display_label, task_order_key
-from .groups import ensure_groups, group_tasks, save_group, attach_standard
+from .groups import ensure_groups, group_tasks, save_group, attach_standard, group_order
 from .catalog import CATALOG, add_subject, ensure_defaults
 from .config import Settings, setup_logging
 from .db import Database
@@ -264,7 +264,7 @@ def create_app(settings=None):
         for subject in subjects:
             ensure_groups(g.db, subject.id)
         g.db.commit()
-        groups = list(g.db.scalars(select(TaskGroup).join(Subject).where(Subject.student_id == g.student.id).order_by(TaskGroup.id)))
+        groups = list(g.db.scalars(select(TaskGroup).join(Subject).where(Subject.student_id == g.student.id).order_by(*group_order())))
         memberships = {group.id: set(g.db.scalars(select(GroupTask.task_id).where(GroupTask.group_id == group.id))) for group in groups}
         tasks = sorted(g.db.scalars(select(Task).join(Subject).where(Subject.student_id == g.student.id)), key=lambda t: (t.subject_id, task_order_key(t)))
         slots = list(g.db.scalars(select(Slot).where(Slot.student_id == g.student.id, Slot.day >= week,
@@ -360,7 +360,10 @@ def create_app(settings=None):
         name = request.form['name'].strip()[:80]
         if not name:
             raise ValueError('Укажите название предмета')
-        g.db.add(Subject(student_id=g.student.id, name=name))
+        subject = Subject(student_id=g.student.id, name=name)
+        g.db.add(subject)
+        g.db.flush()
+        ensure_groups(g.db, subject.id)
         return back('editing')
 
     @app.post('/subjects/<int:item_id>')

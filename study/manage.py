@@ -78,6 +78,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('migrate', help='Инициализировать/обновить схему; сначала остановите web и bot и сделайте backup')
+    command = sub.add_parser('unify-full-variants', help='Объединить старые полные занятия с полными вариантами; сначала сделайте backup')
+    command.add_argument('--dry-run', action='store_true')
     sub.add_parser('check', help='Проверить конфигурацию, версию схемы и целостность SQLite')
     sub.add_parser('bot-health', help='Проверить scheduler, базу и очередь ответов')
     sub.add_parser('requeue', help='Повторить доставку ответов после устранения причины сбоя')
@@ -111,7 +113,12 @@ def main():
         Database(settings.database_url).engine.dispose()
     else:
         db = Database(settings.database_url, initialize=False)
-        if args.command == 'whitelist':
+        if args.command == 'unify-full-variants':
+            from .services import normalize_full_variants
+            with db.session.begin() as s:
+                ids = normalize_full_variants(s, dry_run=args.dry_run)
+            print(f'Полных занятий: {len(ids)}' + (' (без изменений)' if args.dry_run else ''))
+        elif args.command == 'whitelist':
             with db.session.begin() as s:
                 policy = s.get(AccessPolicy, 1)
                 if args.action in ('enable', 'disable'):

@@ -23,7 +23,7 @@ def test_custom_group_goal_and_task_selection_repeat(client,db):
         record_activity(s,1,1,1,DAY,'practice',{1:0},'partial')
         record_activity(s,1,1,1,DAY,'exam',{1:1,3:4},'exam')
         rows=progress(s,1,DAY)
-        assert [r['done'] for r in rows]==[1,3]
+        assert [r['done'] for r in rows]==[2,5]
         assert rows[0]['label']=='Математика. Повторение'
         assert rows[1]['label']=='Математика. №1, №19'
         selection_id=goals[2].id
