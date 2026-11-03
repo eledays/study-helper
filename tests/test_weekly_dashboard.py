@@ -11,7 +11,8 @@ def test_completed_dashboard_groups_only_selected_students_week(client, db):
         record_exam_total(s, 1, 1, 1, date(2026, 10, 14), 3, 'dashboard-exam')
         record_activity(s, 1, 1, 1, date(2026, 10, 20), 'practice', {1: 1}, 'next-week')
     html = client.get('/goals?week=2026-10-12').text
-    assert 'id="completed-title"' in html
+    assert 'goals-board home-list' in html
+    assert 'completed-title' not in html and 'completed-grid' not in html
     assert html.count('goal-card completed-card') == 2
     assert '2 <span>заданий</span>' in html
     assert '13.10' in html and '14.10' in html
@@ -58,3 +59,22 @@ def test_home_uses_only_aggregate_completion_data(client, monkeypatch):
         raise AssertionError('Home must not allocate full analytics')
     monkeypatch.setattr('study.web.analytics', unexpected)
     assert client.get('/').status_code == 200
+
+
+def test_home_has_one_empty_state_without_section_blocks(client):
+    html = client.get('/?week=2026-11-02').text
+    assert html.count('class="empty"') == 1
+    assert 'На этой неделе пока нет целей и занятий' in html
+    assert 'completed-week' not in html and 'dashboard-label' not in html
+
+
+def test_goals_and_completed_work_are_direct_siblings(client, db):
+    from study.models import Goal
+    with db.session.begin() as s:
+        s.add(Goal(student_id=1, subject_id=1, kind='test', week=date(2026,10,12), target=4, series='unified'))
+        record_activity(s, 1, 1, 1, date(2026,10,13), 'practice', {1:1}, 'unified-work')
+    html = client.get('/?week=2026-10-12').text
+    board = html.split('id="board-cards"', 1)[1].split('<dialog', 1)[0]
+    assert board.count('<article ') == 2
+    assert 'goal-card completed-card' in board and '--goal-fill:' in board
+    assert '<section' not in board and '<h2' not in board and 'class="empty"' not in board

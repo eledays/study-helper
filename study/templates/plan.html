@@ -2,7 +2,7 @@
 {% extends 'base.html' %}
 {% from 'macros.html' import hidden,subjects_select,scope with context %}
 {% block content %}
-<section class="planning-board" aria-label="{{'Цели' if section == 'goals' else 'Расписание'}}">
+<section class="planning-board" aria-label="{{'Главная' if section == 'goals' else 'Расписание'}}">
   <h1 class="page-title board-title">{{'Главная' if section == 'goals' else 'Расписание'}}</h1>
   <div class="board-toolbar">
     <div class="week-switch" aria-label="Выбор недели">
@@ -12,36 +12,14 @@
     </div>
 
   </div>
-  {% if section == 'goals' and goals %}<h2 class="dashboard-label">Цели</h2>{% endif %}
-  <div id="board-cards" data-editing="{{'true' if request.args.get('edit') == '1' else 'false'}}" class="card-board {{'goals-board' if section == 'goals' else 'schedule-board'}}">
+  <div id="board-cards" data-editing="{{'true' if request.args.get('edit') == '1' else 'false'}}" class="card-board {{'goals-board home-list' if section == 'goals' else 'schedule-board'}}">
   {% if section == 'goals' %}
     {% for goal in goals %}
     <article class="board-card goal-card" style="--goal-fill:{{goal.percent}}%;--card-order:{{[loop.index0,6]|min}}">
       <strong title="{{goal.label|display_label}}">{{goal.label|display_label}}</strong>
       <div class="numbers">{{goal.done}} <span>из {{goal.target}}</span></div>
     </article>
-    {% else %}{% if not completed.history and not completed.exams %}<p class="empty">Нет целей на эту неделю</p>{% endif %}{% endfor %}
-  {% else %}
-    {% for n in range(7) %}
-    {% set day=week+timedelta(days=n) %}
-    {% set day_slots=slots|selectattr('day','equalto',day)|list %}
-    <article class="board-card day {{'today' if day == today}} {{'is-empty' if not day_slots}}" style="--card-order:{{n}}">
-      <h3>{{['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'][n]}} <span>{{day.strftime('%d.%m')}}</span></h3>
-      {% for slot in day_slots %}
-      <div class="slot {{slot.kind}}">
-        <strong>{{slot.start}}–{{slot.end}}</strong>
-        <span>{{slot.title|display_label}}</span>
-        <small>{{{'study':'Занятие','rest':'Отдых','exam':'Пробник'}[slot.kind]}}</small>
-      </div>
-      {% endfor %}
-    </article>
     {% endfor %}
-  {% endif %}
-  </div>
-  {% if section == 'goals' %}
-  <section class="completed-week" aria-labelledby="completed-title">
-    <h2 id="completed-title" class="dashboard-label">Занятия</h2>
-    <div class="completed-grid">
     {% for n in range(6,-1,-1) %}
     {% set day=week+timedelta(days=n) %}
     {% set practices=completed.history|selectattr('day','equalto',day.isoformat())|list %}
@@ -61,10 +39,24 @@
     </article>
     {% endfor %}
     {% endfor %}
-    </div>
-    {% if not completed.history and not completed.exams %}<p class="empty">Занятий пока нет</p>{% endif %}
-  </section>
+    {% if not goals and not completed.history and not completed.exams %}<p class="empty">На этой неделе пока нет целей и занятий</p>{% endif %}
+  {% else %}
+    {% for n in range(7) %}
+    {% set day=week+timedelta(days=n) %}
+    {% set day_slots=slots|selectattr('day','equalto',day)|list %}
+    <article class="board-card day {{'today' if day == today}} {{'is-empty' if not day_slots}}" style="--card-order:{{n}}">
+      <h3>{{['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'][n]}} <span>{{day.strftime('%d.%m')}}</span></h3>
+      {% for slot in day_slots %}
+      <div class="slot {{slot.kind}}">
+        <strong>{{slot.start}}–{{slot.end}}</strong>
+        <span>{{slot.title|display_label}}</span>
+        <small>{{{'study':'Занятие','rest':'Отдых','exam':'Пробник'}[slot.kind]}}</small>
+      </div>
+      {% endfor %}
+    </article>
+    {% endfor %}
   {% endif %}
+  </div>
   <dialog id="week-picker" class="create-dialog week-picker" aria-labelledby="week-picker-title" data-today="{{today}}">
     <div class="dialog-heading"><h2 id="week-picker-title">Выбор недели</h2><button type="button" class="quiet dialog-close" id="week-picker-close" aria-label="Закрыть выбор недели">{{ui_icon('close')}}</button></div>
     <label class="week-date-label">Перейти к дате<input type="date" id="week-picker-date" value="{{week}}" min="2000-01-10" max="2099-12-31"></label>

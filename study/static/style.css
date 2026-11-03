@@ -222,3 +222,13 @@ html{scrollbar-gutter:stable}
 .settings-plan-card:hover{color:var(--accent-ink);filter:brightness(1.04)}
 .settings-plan-card div{flex:1;min-width:0}.settings-plan-card strong{display:block;font-size:18px;font-weight:650}.settings-plan-card span:not(.material-symbols-outlined){display:block;font-size:13px;margin-top:3px;opacity:.78}
 html[data-swiping=true]{overflow-x:clip}
+
+/* Home uses one top-aligned list for every kind of weekly activity. */
+.home-list.card-board{display:grid;grid-template-columns:minmax(0,1fr);width:min(924px,calc(100% - 64px));max-width:924px;gap:12px;margin:0 auto;padding:0;align-content:start}
+.home-list .board-card{width:100%;max-width:none;min-height:144px;height:auto;padding:20px 22px;border-radius:18px}
+.home-list .goal-card>strong{white-space:normal;overflow-wrap:anywhere}
+.home-list .goal-card .numbers{margin:16px 0 0;font-size:30px}
+.home-list .completed-card small{margin-top:8px}
+.home-list .goal-card:not(.completed-card)::before{background:var(--accent);opacity:.2}
+.home-list>.empty{margin:0;padding:8px 0;text-align:left;font-size:14px}
+@media(max-width:750px){.home-list.card-board{width:calc(100% - 32px)}.home-list .board-card{padding:18px 20px;min-height:138px}.home-list .goal-card .numbers{font-size:28px}}
