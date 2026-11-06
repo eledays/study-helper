@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import select
 from study.models import Activity, Goal, GoalSelection, Task, TaskGroup
 from study.groups import ensure_groups, group_order, group_tasks, save_group, attach_standard
-from study.services import record_activity, record_exam_total, progress, normalize_full_variants
+from study.services import record_activity, record_exam_total, progress, normalize_full_variants, completed_work, analytics
 from study.account import remove_catalog_item
 
 DAY = date(2026, 10, 12)
@@ -55,3 +55,18 @@ def test_legacy_normalization_is_conservative_idempotent_and_keeps_snapshots(db)
         assert full.scale_snapshot == {} and full.secondary is None
         s.flush()
         assert normalize_full_variants(s) == []
+        ensure_groups(s, 1)
+        group = s.scalar(select(TaskGroup).where(TaskGroup.subject_id == 1, TaskGroup.kind == 'full'))
+        goal = Goal(student_id=1, subject_id=1, kind='group', week=DAY, target=5, series='legacy')
+        s.add(goal); s.flush()
+        s.add(GoalSelection(goal_id=goal.id, group_id=group.id, metric='sets'))
+        s.flush()
+        assert progress(s, 1, DAY)[0]['done'] == 1
+        home = completed_work(s, 1, 1, DAY, DAY)
+        assert [row['id'] for row in home['history']] == [partial.id]
+        assert [(row['id'], row['day'], row['primary'], row['maximum'])
+                for row in home['exams']] == [(full.id, DAY.isoformat(), 3, 7)]
+        report = analytics(s, 1, 1, start=DAY, end=DAY)
+        assert [row['id'] for row in report['exams']] == [full.id]
+        assert report['exams'][0]['title'] == 'Полный вариант'
+        assert report['exams'][0]['secondary'] is None
