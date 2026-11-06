@@ -43,7 +43,7 @@
   <div class="editing-plan-grid">
     <section class="workspace-card"><h2>Цели</h2>
       {% for goal in goals %}<details class="record-editor"><summary>{{goal.label|display_label}}</summary>
-        <form action="/goals/{{goal.id}}" method="post">{{hidden()}}<label>Количество<input name="target" type="number" value="{{goal.target}}" min="1" max="1000" required></label>{{scope()}}<button>Сохранить</button></form>
+        <form action="/goals/{{goal.id}}" method="post">{{hidden()}}<label>Количество ({{goal.unit}})<input name="target" type="number" value="{{goal.target}}" min="1" max="1000" required></label>{{scope()}}<button>Сохранить</button></form>
         <form action="/delete/goal/{{goal.id}}" method="post">{{hidden()}}<button class="quiet">Удалить цель</button></form>
       </details>{% else %}<p class="empty">Нет целей на эту неделю</p>{% endfor %}
     </section>

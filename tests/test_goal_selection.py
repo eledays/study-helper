@@ -54,3 +54,55 @@ def test_goal_rejects_foreign_or_empty_selection(client,db):
                       {'kind':'tasks','task_ids':[1,5]},{'kind':'tasks'}]:
         assert client.post('/goals',data={**base,**selection}).status_code==302
     with db.session() as s:assert not list(s.scalars(select(Goal)))
+
+
+def test_full_variant_goal_defaults_to_sets_and_can_explicitly_count_tasks(client, db):
+    from study.groups import ensure_groups
+    from study.models import TaskGroup
+    with db.session.begin() as s:
+        ensure_groups(s, 1)
+        group = s.scalar(select(TaskGroup).where(TaskGroup.subject_id == 1, TaskGroup.kind == 'full'))
+        group_id = group.id
+        record_activity(s, 1, 1, 1, DAY, 'practice', {1: 1, 2: 2, 3: 0}, 'full')
+    base = {'csrf': 'test-csrf', 'subject_id': 1, 'kind': 'group', 'group_id': group_id,
+            'target': 5, 'weeks': 1, 'week': DAY.isoformat()}
+    client.post('/goals', data=base)
+    client.post('/goals', data={**base, 'metric': 'tasks'})
+    with db.session() as s:
+        rows = progress(s, 1, DAY)
+        assert [(r['done'], r['unit']) for r in rows] == [(1, 'вариантов'), (3, 'заданий')]
+    html = client.get('/?week=2026-10-12').text
+    assert 'из 5 вариантов' in html and 'из 5 заданий' in html
+
+
+def test_goal_counts_week_boundaries_subjects_students_and_attempts(db):
+    from datetime import timedelta
+    from study.groups import ensure_groups
+    from study.models import TaskGroup
+    from study.services import record_exam_total
+    with db.session.begin() as s:
+        ensure_groups(s, 1)
+        full = s.scalar(select(TaskGroup).where(TaskGroup.subject_id == 1, TaskGroup.kind == 'full'))
+        for metric in ('sets', 'tasks'):
+            goal = Goal(student_id=1, subject_id=1, kind='group', week=DAY, target=5, series=metric)
+            s.add(goal); s.flush()
+            s.add(GoalSelection(goal_id=goal.id, group_id=full.id, metric=metric))
+        # Previous Sunday and next Monday belong to other weeks.
+        for offset in (-1, 7):
+            record_activity(s, 1, 1, 1, DAY+timedelta(days=offset), 'exam',
+                            {1: 1, 2: 2, 3: 4}, f'outside-{offset}')
+        for offset in (0, 6):
+            record_activity(s, 1, 1, 1, DAY+timedelta(days=offset), 'exam',
+                            {1: 0, 2: None, 3: 1}, f'inside-{offset}')
+        record_exam_total(s, 1, 1, 1, DAY, 3, 'total')
+        record_activity(s, 1, 1, 1, DAY, 'practice', {1: 0}, 'partial')
+        s.add_all([Subject(id=5, student_id=3, name='Другой ученик'),
+                   Subject(id=6, student_id=1, name='Другой предмет')])
+        s.flush()
+        s.add_all([Task(id=5, subject_id=5, name='№1', part='none', max_score=1),
+                   Task(id=6, subject_id=6, name='№1', part='none', max_score=1)])
+        s.flush()
+        record_activity(s, 3, 3, 5, DAY, 'practice', {5: 1}, 'other-student')
+        record_activity(s, 1, 1, 6, DAY, 'practice', {6: 1}, 'other-subject')
+        assert [r['done'] for r in progress(s, 1, DAY)] == [3, 5]
+        assert [r['done'] for r in progress(s, 1, DAY+timedelta(days=6))] == [3, 5]

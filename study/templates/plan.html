@@ -17,7 +17,7 @@
     {% for goal in goals %}
     <article class="board-card goal-card" style="--goal-fill:{{goal.percent}}%;--card-order:{{[loop.index0,6]|min}}">
       <strong title="{{goal.label|display_label}}">{{goal.label|display_label}}</strong>
-      <div class="numbers">{{goal.done}} <span>из {{goal.target}}</span></div>
+      <div class="numbers">{{goal.done}} <span>из {{goal.target}} {{goal.unit}}</span></div>
     </article>
     {% endfor %}
     {% for n in range(6,-1,-1) %}
@@ -69,7 +69,7 @@
     <form action="/goals" method="post" data-goal-selection>
       {{hidden()}}{{subjects_select(subjects)}}
       <label>Выбор заданий<select name="kind"><option value="group">Группа</option><option value="tasks">Конкретные номера</option></select></label>
-      <label data-group-field>Группа<select name="group_id" required><option value="">Выберите группу</option>{% for group in groups %}<option data-subject="{{group.subject_id}}" value="{{group.id}}">{{group.name}}</option>{% endfor %}</select></label>
+      <label data-group-field>Группа<select name="group_id" required><option value="">Выберите группу</option>{% for group in groups %}<option data-subject="{{group.subject_id}}" data-kind="{{group.kind or ''}}" value="{{group.id}}">{{group.name}}</option>{% endfor %}</select></label>
       <label data-group-field>Считать<select name="metric"><option value="tasks">Решения заданий из группы</option><option value="sets">Группу целиком</option></select></label>
       <fieldset class="task-picker" data-goal-tasks hidden><legend>Номера заданий</legend>{% for t in tasks %}<label class="check" data-subject="{{t.subject_id}}"><input type="checkbox" name="task_ids" value="{{t.id}}">{{t.name}}</label>{% endfor %}</fieldset>
       <div class="row"><label>Количество<input name="target" type="number" min="1" max="1000" value="5" required></label><label>Число недель<input name="weeks" type="number" min="1" max="52" value="1" required></label></div>

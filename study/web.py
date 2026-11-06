@@ -455,7 +455,7 @@ def create_app(settings=None):
             if not group_tasks(g.db, group.id):
                 raise ValueError('В этой группе нет заданий')
             group_id = group.id
-            metric = request.form.get('metric', 'tasks')
+            metric = request.form.get('metric', 'sets' if group.kind == 'full' else 'tasks')
             if metric not in ('tasks', 'sets'):
                 raise ValueError('Выберите способ подсчёта')
         elif kind == 'tasks':

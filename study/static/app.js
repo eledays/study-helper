@@ -92,6 +92,9 @@ document.querySelectorAll('form[data-goal-selection]').forEach(form=>{
   picker.querySelectorAll('[data-subject]').forEach(label=>{const active=!useGroup&&label.dataset.subject===subject.value;label.hidden=!active;const input=label.querySelector('input');input.disabled=!active;if(!active)input.checked=false});
   mode.setCustomValidity('');
  }
+ group.addEventListener('change',()=>{
+  form.querySelector('[name="metric"]').value=group.selectedOptions[0]?.dataset.kind==='full'?'sets':'tasks';
+ });
  subject.addEventListener('change',sync);mode.addEventListener('change',sync);
  picker.addEventListener('change',()=>mode.setCustomValidity(''));
  form.addEventListener('submit',event=>{if(mode.value==='tasks'&&!picker.querySelector('input:checked:not(:disabled)')){event.preventDefault();mode.setCustomValidity('Выберите хотя бы одно задание');mode.reportValidity()}});

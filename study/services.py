@@ -132,6 +132,7 @@ def progress(s, student_id, week):
     subjects = {x.id: display_label(x.name) for x in s.scalars(select(Subject).where(Subject.student_id == student_id).order_by(Subject.id))}
     result = []
     for g in goals:
+        unit_forms = ('задания', 'заданий')
         if g.kind in ('group', 'tasks'):
             selection = s.get(GoalSelection, g.id)
             group = s.get(TaskGroup, selection.group_id) if selection and selection.group_id else None
@@ -146,10 +147,13 @@ def progress(s, student_id, week):
                 count = sum(bool(selected_ids) and selected_ids <= ids for ids in attempted.values())
             else:
                 count = len(relevant)
+            if group and selection.metric == 'sets':
+                unit_forms = ('варианта', 'вариантов') if group.kind == 'full' else ('группы', 'групп')
             label = group.name if group else ', '.join(tasks[task_id].name for task_id in sorted(selected_ids) if task_id in tasks) or bot_text('goals.tasks_label')
         elif g.kind == 'test':
             required = {t.id for t in standard_tasks(s, g.subject_id, 'test')}
             count = sum(a.subject_id == g.subject_id and a.kind in ('test', 'exam') and required <= {sc.task_id for sc in scores if sc.activity_id == a.id and sc.attempted} for a in activities)
+            unit_forms = ('варианта', 'вариантов')
             label = bot_text('goals.test_label')
         else:
             second_ids = {t.id for t in standard_tasks(s, g.subject_id, 'second')} if g.kind != 'task' else set()
@@ -157,7 +161,8 @@ def progress(s, student_id, week):
                         (sc.task_id == g.task_id if g.kind == 'task' else sc.task_id in second_ids) for sc in scores)
             label = tasks[g.task_id].name if g.kind == 'task' else bot_text('goals.second_label')
         result.append({'id': g.id, 'label': f'{subjects[g.subject_id]}. {label}', 'done': count,
-                       'target': g.target, 'percent': min(100, round(count / g.target * 100))})
+                       'target': g.target, 'unit': unit_forms[0 if g.target % 10 == 1 and g.target % 100 != 11 else 1],
+                       'percent': min(100, round(count / g.target * 100))})
     return result
 
 
