@@ -11,7 +11,7 @@ DAY = date(2026, 10, 12)
 
 def test_analytics_keeps_skips_and_historical_maxima(db):
     with db.session.begin() as s:
-        record_activity(s, 1, 1, 1, DAY, 'practice', {1: 1, 2: 1, 3: 0}, 'practice-stats')
+        record_activity(s, 1, 1, 1, DAY, 'practice', {2: 1, 3: 0}, 'practice-stats')
         record_activity(s, 1, 1, 1, DAY, 'exam', {1: None, 2: 2, 3: None}, 'exam-stats')
         s.get(Task, 2).max_score = 10
         report = analytics(s, 1, 1)

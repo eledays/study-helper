@@ -145,7 +145,7 @@ if(dataNode){
   metrics('exam-metrics',[[last?number(last.secondary):'—','Последний балл',last?shortDate(last.day):''],[rows.length?number(average(rows.map(row=>row.secondary))):'—','Средний балл'],[delta===null?'—':`${delta>0?'+':''}${number(delta)}`,'Изменение',rows.length>1?'За выбранный период':'']]);
   // Keep gaps where an exam has no converted score; never substitute its primary score
   const chartRows=all.map(row=>({day:row.day,secondary:row.secondary}));
-  draw(document.getElementById('exam-chart'),rows.length?chartRows:[],[['secondary','Баллы из 100','var(--accent)']],100,'Динамика баллов пробников по шкале 0–100','Пока нет пробников с баллом по шкале');
+  draw(document.getElementById('exam-chart'),rows.length?chartRows:[],[['secondary','Баллы из 100','var(--accent)']],100,'Динамика баллов полных вариантов по шкале 0–100','Пока нет полных вариантов с баллом по шкале');
   const pending=document.getElementById('exam-pending'),missing=all.length-rows.length;pending.hidden=!missing;
   pending.querySelector('span').textContent=`Без балла по шкале: ${missing}`;
  }

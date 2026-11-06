@@ -15,7 +15,7 @@ from sqlalchemy import select
 from .presentation import display_label, task_order_key
 from .messages import bot_html, bot_text, bot_texts, UserMessageError
 from .result_input import full_result, grid_rows, parse_points
-from .groups import ensure_groups, group_tasks
+from .groups import ensure_groups, group_tasks, group_order
 from .catalog import ensure_defaults
 from .config import Settings, setup_logging
 from .db import Database
@@ -185,12 +185,12 @@ def router(db, settings):
         key = f'{user.id}:daily:{day}'
         if not s.get(Delivery, key): s.add(Delivery(key=key))
 
-    @dp.message(Command('practice', 'exam', 'goals', 'weekly', 'rest'))
+    @dp.message(Command('practice', 'goals', 'weekly', 'rest'))
     async def action_command(message, command: CommandObject):
         with response_session() as s:
             user = get_user(s, message.from_user)
             action = command.command
-            if action in ('practice', 'exam'):
+            if action == 'practice':
                 await subject_menu(message, s, user, action)
             elif action == 'goals':
                 await show_goals(message, s, user)
@@ -218,18 +218,21 @@ def router(db, settings):
 
     async def type_menu(message, s, data):
         ensure_groups(s, data['subject'])
-        groups = list(s.scalars(select(TaskGroup).where(TaskGroup.subject_id == data['subject']).order_by(TaskGroup.id)))
-        rows = [[(group.name[:55], f"group:{data['key'][:8]}:{group.id}")] for group in groups if group_tasks(s, group.id)]
+        groups = list(s.scalars(select(TaskGroup).where(TaskGroup.subject_id == data['subject']).order_by(*group_order())))
+        rows = [[(group.name[:55], f"group:{data['key'][:8]}:{group.id}")] for group in groups if group.kind == 'full' or group_tasks(s, group.id)]
         rows += [[(bot_text('buttons.individual_tasks'), 'type:practice')], [(bot_text('buttons.other_date'), 'date'), (bot_text('buttons.cancel_entry'), 'cancel')]]
         await render_step(message, data, bot_text('entry.kind'), keyboard(rows))
 
-    async def exam_menu(message, data):
-        data['stage'] = 'exam-ready'
-        await render_step(message, data, bot_text('entry.exam_mode'), keyboard([
-            [(bot_text('buttons.exam_total'), f"exam-total:{data['key'][:8]}")],
-            [(bot_text('buttons.exam_bulk'), f"exam-bulk:{data['key'][:8]}")],
-            [(bot_text('buttons.exam_select'), f"exam-select:{data['key'][:8]}")],
-            [(bot_text('buttons.other_date'), 'date'), (bot_text('buttons.cancel_entry'), 'cancel')]]))
+    async def full_variant_menu(message, s, data):
+        ensure_groups(s, data['subject'])
+        group = s.scalar(select(TaskGroup).where(
+            TaskGroup.subject_id == data['subject'], TaskGroup.kind == 'full'))
+        tasks = group_tasks(s, group.id)
+        if not tasks: raise UserMessageError(bot_text('errors.add_tasks'))
+        data.update(stage='group-skipped', kind='exam', group=group.id,
+                    title=data.get('title') or group.name, practice_flow=True,
+                    all_ids=[t.id for t in tasks], values=full_result(tasks), skipped=[], errors=[])
+        await exceptions_menu(message, s, data)
 
     async def save_result(message, s, user, data):
         row = s.get(Draft, user.id)
@@ -295,6 +298,8 @@ def router(db, settings):
         if not tasks: raise UserMessageError(bot_text('errors.add_tasks'))
         ids = set(data.get('selected', []))
         tasks = [task for task in tasks if not ids or task.id in ids]
+        if {task.id for task in tasks} == set(s.scalars(select(Task.id).where(Task.subject_id == data['subject']))):
+            data['kind'] = 'exam'
         data.update(stage='group-skipped', practice_flow=True, all_ids=[t.id for t in tasks],
                     values=full_result(tasks), skipped=[], errors=[])
         await exceptions_menu(message, s, data)
@@ -370,10 +375,7 @@ def router(db, settings):
                     data = {'stage': 'type', 'kind': kind, 'subject': slot.subject_id,
                             'day': slot.day.isoformat(), **entry}
                     if slot.kind == 'exam':
-                        data['selected'] = [t.id for t in s.scalars(select(Task).where(Task.subject_id == slot.subject_id).order_by(Task.id))]
-                        if not data['selected']: raise UserMessageError(bot_text('errors.add_tasks'))
-                        data.update(index=0, values={})
-                        await exam_menu(call.message, data)
+                        await full_variant_menu(call.message, s, data)
                     elif slot.task_ids:
                         data.update(stage='select',selected=list(slot.task_ids),part='all')
                         tasks=list(s.scalars(select(Task).where(Task.subject_id==slot.subject_id).order_by(Task.id)))
@@ -431,10 +433,7 @@ def router(db, settings):
                     if not subject or subject.student_id != user.id: raise UserMessageError(bot_text('errors.subject_not_found'))
                     data['subject'] = subject.id
                     if data['kind'] == 'exam':
-                        data['selected'] = [t.id for t in s.scalars(select(Task).where(Task.subject_id == subject.id).order_by(Task.id))]
-                        if not data['selected']: raise UserMessageError(bot_text('errors.add_tasks'))
-                        data.update(index=0, values={})
-                        await exam_menu(call.message, data)
+                        await full_variant_menu(call.message, s, data)
                     else:
                         data['stage'] = 'type'; await type_menu(call.message, s, data)
                 elif command == 'exam-start' and data.get('stage') == 'exam-ready':
@@ -462,8 +461,12 @@ def router(db, settings):
                     if not group or group.subject_id != data['subject']: raise UserMessageError(bot_text('errors.group_not_found'))
                     tasks = group_tasks(s, group.id)
                     if not tasks: raise UserMessageError(bot_text('errors.empty_group'))
-                    data.update(stage='group-skipped', practice_flow=True, kind='test' if group.kind == 'test' else 'practice', group=group.id,
-                                title=group.name, all_ids=[t.id for t in tasks], values=full_result(tasks), skipped=[], errors=[])
+                    all_ids = set(s.scalars(select(Task.id).where(Task.subject_id == data['subject'])))
+                    is_full = {task.id for task in tasks} == all_ids
+                    kind = 'exam' if is_full else 'test' if group.kind == 'test' else 'practice'
+                    data.update(stage='group-skipped', practice_flow=True, kind=kind, group=group.id,
+                                title='Полный вариант' if is_full else group.name,
+                                all_ids=[t.id for t in tasks], values=full_result(tasks), skipped=[], errors=[])
                     await exceptions_menu(call.message, s, data)
                 elif command == 'selection' and data.get('stage') in ('group-skipped', 'group-errors'):
                     nonce, phase, selection = arg.split(':')
@@ -613,7 +616,7 @@ def router(db, settings):
                 except ValueError:
                     await message.answer(bot_text('errors.past_date')); return
                 data = dict(row.data); data.update(day=day.isoformat(), stage='type')
-                if data['kind'] == 'exam': await exam_menu(message,data)
+                if data['kind'] == 'exam': await full_variant_menu(message,s,data)
                 else: await type_menu(message,s,data)
                 row.data = data
             else:
@@ -638,7 +641,7 @@ def due_messages(s, user, now, base_url=None):
         text = bot_text('notifications.rest_day') if rested else texts[day.toordinal() % len(texts)]
         if not has_study(s, user.id, day) and not s.get(Delivery, f'{user.id}:daily:{day}'):
             yield f'{user.id}:daily:{day}', text, keyboard([
-                [(bot_text('buttons.record_practice'), f'daily:{day}:practice'), (bot_text('buttons.record_exam'), f'daily:{day}:exam')],
+                [(bot_text('buttons.record_practice'), f'daily:{day}:practice')],
                 [(bot_text('buttons.rest_female' if user.gender == 'female' else 'buttons.rest_male' if user.gender == 'male' else 'buttons.rest_neutral'), f'daily:{day}:rest')]])
         if day.weekday() == 6:
             yield f'{user.id}:weekly:{day}', weekly_text(s, user.id, day), weekly_link(day, base_url or Settings().base_url)
@@ -709,7 +712,7 @@ async def main():
         return response
     bot.session.middleware(polling_heartbeat)
     await bot.set_my_commands([BotCommand(command=name, description=bot_text(f'commands.{name}'))
-                               for name in ('start', 'practice', 'exam', 'goals', 'weekly', 'rest', 'help', 'cancel')])
+                               for name in ('start', 'practice', 'goals', 'weekly', 'rest', 'help', 'cancel')])
     task = asyncio.create_task(scheduler(bot, db, settings.base_url))
     try:
         await router(db, settings).start_polling(bot, tasks_concurrency_limit=1)

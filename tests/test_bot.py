@@ -40,7 +40,7 @@ class FakeSession(BaseSession):
             return Message(message_id=getattr(method, 'message_id', None) or len(self.messages), date=datetime.now(), chat=Chat(id=100,type='private'), text=getattr(method,'text',None))
         return True
 
-def test_bot_full_exam_duplicate_and_correction(db):
+def test_pending_legacy_exam_duplicate_and_correction(db):
     async def run():
         transport=FakeSession(); bot=Bot('123456:ABCDEF_fake_token',session=transport)
         dp=router(db,Settings())
@@ -51,7 +51,12 @@ def test_bot_full_exam_duplicate_and_correction(db):
             nonlocal counter
             counter+=1
             await dp.feed_update(bot,Update(update_id=counter,callback_query=CallbackQuery(id=str(counter),from_user=tg,chat_instance='x',message=message,data=data)))
-        await press('begin:exam'); await press('sub:1'); await press('exam-start')
+        await press('begin:exam'); await press('sub:1')
+        # Resume a draft created before full variants adopted the ordinary group flow.
+        with db.session.begin() as s:
+            row = s.get(Draft, 1)
+            row.data = {**row.data, 'stage': 'exam-ready', 'selected': [1, 2, 3], 'index': 0, 'values': {}}
+        await press('exam-start')
         with db.session() as s: key=s.get(Draft,1).data['key'][:8]
         await press(f'points:{key}:0:1')
         await press(f'points:{key}:0:1') # Must not become score for task 2.
@@ -133,6 +138,21 @@ class BotHarness:
         await self.dp.feed_update(self.bot,Update(update_id=self.counter,message=message))
     def draft(self):
         with self.db.session() as s:return dict(s.get(Draft,1).data)
+    async def full_variant(self):
+        from study.models import TaskGroup
+        await self.text('/practice')
+        await self.press('sub:1')
+        with self.db.session() as s:
+            full = s.scalar(select(TaskGroup).where(TaskGroup.subject_id == 1, TaskGroup.kind == 'full'))
+            group_id = full.id
+        await self.press(f"group:{self.draft()['key'][:8]}:{group_id}")
+
+    async def legacy_exam(self):
+        await self.full_variant()
+        with self.db.session.begin() as s:
+            row = s.get(Draft, 1)
+            row.data = {**row.data, 'stage': 'exam-ready', 'selected': [1, 2, 3], 'index': 0, 'values': {}}
+
     async def next_exceptions(self):
         data=self.draft()
         await self.press(f"exceptions-next:{data['key'][:8]}:{data['stage']}")
@@ -180,12 +200,12 @@ def test_group_errors_only_ask_for_partial_credit(db):
     asyncio.run(run())
 
 
-def test_exam_selection_bulk_and_total(db):
+def test_pending_legacy_exam_selection_bulk_and_total(db):
     from study.models import ExamTotal
     from study.services import analytics
     async def run():
         h=BotHarness(db)
-        await h.press('begin:exam');await h.press('sub:1')
+        await h.legacy_exam()
         key=h.draft()['key'][:8]
         await h.press(f'exam-select:{key}')
         await h.press(f'missing:{key}:3')
@@ -194,12 +214,12 @@ def test_exam_selection_bulk_and_total(db):
         await h.next_exceptions()
         assert h.draft()['selected']==[2]  # One-point task does not need a score question
         await h.press(f'points:{key}:0:2')
-        await h.press('begin:exam');await h.press('sub:1')
+        await h.legacy_exam()
         key=h.draft()['key'][:8]
         await h.press(f'exam-bulk:{key}');await h.text('1 9 -')
         assert h.draft()['stage']=='exam-bulk'
         await h.text('0 1 -')
-        await h.press('begin:exam');await h.press('sub:1')
+        await h.legacy_exam()
         key=h.draft()['key'][:8]
         await h.press(f'exam-total:{key}');await h.text('8')
         assert h.draft()['stage']=='exam-total'
@@ -256,7 +276,7 @@ def test_welcome_has_no_buttons_and_working_command_help(db):
         assert all(command not in help_message.text for command in ('/missed', '/history', '/site', '/menu'))
         assert 'Результаты сохраняются' not in help_message.text
         assert 'Внутри записи' not in help_message.text
-        for command in ('/practice', '/exam', '/goals', '/weekly', '/rest'):
+        for command in ('/practice', '/goals', '/weekly', '/rest'):
             assert command in help_message.text
         await h.text('/practice')
         assert h.draft()['stage'] == 'subject'
@@ -266,14 +286,16 @@ def test_welcome_has_no_buttons_and_working_command_help(db):
 def test_commands_route_without_consuming_score_input(db):
     async def run():
         h = BotHarness(db)
-        await h.text('/exam')
+        await h.full_variant()
         assert h.draft()['kind'] == 'exam'
-        await h.press('sub:1')
         key = h.draft()['key'][:8]
-        await h.press(f'exam-total:{key}')
+        await h.press(f'missing:{key}:3')
+        await h.next_exceptions()
+        await h.press(f'mistake:{key}:2')
+        await h.next_exceptions()
         await h.text('/help')
-        assert h.draft()['stage'] == 'exam-total'
-        await h.text('3')
+        assert h.draft()['stage'] == 'score'
+        await h.press(f'points:{key}:0:2')
         with db.session() as s:
             assert s.get(Draft, 1) is None
             assert len(list(s.scalars(select(Activity)))) == 1
@@ -361,7 +383,9 @@ def test_individual_tasks_use_same_defaults_and_resume_after_restart(db):
         await h.next_exceptions()
         await h.next_exceptions()
         with db.session() as s:
-            assert [(r.task_id, r.score) for r in s.scalars(select(Score).order_by(Score.task_id))] == [(2, 2), (3, 4)]
+            assert [(r.task_id, r.score) for r in s.scalars(select(Score).order_by(Score.task_id))] == [(1, 0), (2, 2), (3, 4)]
+            assert s.scalar(select(Activity)).kind == 'exam'
+            assert s.scalar(select(Score).where(Score.task_id == 1)).attempted is False
         assert len([m for m in h.transport.messages if isinstance(m, SendMessage)]) == 1
     asyncio.run(run())
 
@@ -671,10 +695,10 @@ def test_wellbeing_is_asked_after_every_practice_and_exam(db, monkeypatch):
             await h.press(final.reply_markup.inline_keyboard[0][number].callback_data)
             with db.session() as s:
                 assert s.scalar(select(Daily)).mood == number + 1
-        await h.text('/exam')
-        await h.press('sub:1')
-        await h.press(f"exam-total:{h.draft()['key'][:8]}")
-        await h.text('3')
+        await h.full_variant()
+        await h.press(f"missing:{h.draft()['key'][:8]}:3")
+        await h.next_exceptions()
+        await h.next_exceptions()
         final = h.transport.messages[-1]
         assert 'Как ты себя чувствуешь?' in final.text
         assert [len(row) for row in final.reply_markup.inline_keyboard] == [5, 5, 2]
@@ -700,4 +724,54 @@ def test_wellbeing_after_backdated_entry_can_be_answered(db, monkeypatch):
             daily = s.scalar(select(Daily))
             assert daily.day == date(2026, 10, 17)
             assert daily.mood == 3
+    asyncio.run(run())
+
+
+def test_practice_full_variant_first_and_exam_command_removed(db):
+    from study.models import TaskGroup
+    async def run():
+        h = BotHarness(db)
+        await h.text('/exam')
+        with db.session() as s:
+            assert s.get(Draft, 1) is None
+        await h.text('/help')
+        assert '/exam' not in h.transport.messages[-1].text
+        await h.text('/practice'); await h.press('sub:1')
+        menu = h.transport.messages[-1].reply_markup.inline_keyboard
+        assert menu[0][0].text == 'Полный вариант'
+        await h.press(menu[0][0].callback_data)
+        assert h.draft()['stage'] == 'group-skipped'
+        assert h.draft()['values'] == {'1': 1, '2': 2, '3': 4}
+        assert not any(button.callback_data.startswith('exam-')
+                       for row in h.transport.messages[-1].reply_markup.inline_keyboard for button in row)
+        await h.press(f"missing:{h.draft()['key'][:8]}:3")
+        await h.next_exceptions()
+        await h.next_exceptions()
+        with db.session() as s:
+            row = s.scalar(select(Activity))
+            assert row.kind == 'exam' and row.secondary == 60
+            assert row.title == 'Полный вариант'
+    asyncio.run(run())
+
+
+def test_legacy_full_variant_entrypoints_use_ordinary_group_flow(db):
+    async def run():
+        from datetime import date
+        with db.session.begin() as s:
+            slot = Slot(student_id=1, day=date.today(), start='10:00', end='11:00',
+                        title='Полный вариант из расписания', kind='exam', subject_id=1, series='full')
+            s.add(slot); s.flush(); slot_id = slot.id
+        h = BotHarness(db)
+        for entry in (f'slot:{slot_id}', 'begin:exam', 'daily:2026-10-12:exam'):
+            await h.press(entry)
+            if h.draft()['stage'] == 'subject':
+                await h.press('sub:1')
+            assert h.draft()['stage'] == 'group-skipped'
+            assert h.draft()['all_ids'] == [1, 2, 3]
+            await h.next_exceptions()
+            assert h.draft()['stage'] == 'group-errors'
+            await h.next_exceptions()
+        with db.session() as s:
+            assert len(list(s.scalars(select(Activity)))) == 3
+            assert all(row.kind == 'exam' for row in s.scalars(select(Activity)))
     asyncio.run(run())

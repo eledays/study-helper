@@ -35,7 +35,7 @@
     <article class="board-card goal-card completed-card">
       <strong>{{item.subject}}</strong>
       <div class="numbers">{{item.primary}} <span>из {{item.maximum}}</span></div>
-      <small>{{day.strftime('%d.%m')}} · Пробник{% if item.secondary is not none %} · {{item.secondary}} вторичных{% endif %}</small>
+      <small>{{day.strftime('%d.%m')}} · Полный вариант{% if item.secondary is not none %} · {{item.secondary}} вторичных{% endif %}</small>
     </article>
     {% endfor %}
     {% endfor %}
@@ -50,7 +50,7 @@
       <div class="slot {{slot.kind}}">
         <strong>{{slot.start}}–{{slot.end}}</strong>
         <span>{{slot.title|display_label}}</span>
-        <small>{{{'study':'Занятие','rest':'Отдых','exam':'Пробник'}[slot.kind]}}</small>
+        <small>{{{'study':'Занятие','rest':'Отдых','exam':'Полный вариант'}[slot.kind]}}</small>
       </div>
       {% endfor %}
     </article>
@@ -81,7 +81,7 @@
       <label>Название<input name="title" maxlength="120" required></label>
       <label>Дата<input name="day" type="date" value="{{today if week <= today < week+timedelta(days=7) else week}}" required></label>
       <div class="row"><label>Начало<input name="start" type="time" value="16:00" required></label><label>Конец<input name="end" type="time" value="17:00" required></label></div>
-      <label>Тип<select name="kind"><option value="study">Занятие</option><option value="exam">Пробник</option><option value="rest">Отдых</option></select></label>
+      <label>Тип<select name="kind"><option value="study">Занятие</option><option value="exam">Полный вариант</option><option value="rest">Отдых</option></select></label>
       {{subjects_select(subjects,false)}}
       <fieldset class="task-picker"><legend>Задания</legend>{% for t in tasks %}<label class="check" data-subject="{{t.subject_id}}"><input type="checkbox" name="task_ids" value="{{t.id}}">{{t.name}}</label>{% endfor %}</fieldset>
       <label>Повторять недель<input name="weeks" type="number" value="1" min="1" max="52" required></label><button>Добавить</button>

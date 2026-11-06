@@ -503,7 +503,7 @@ def create_app(settings=None):
         if subject_id:
             subject_for(g.db, g.student.id, subject_id)
         if kind == 'exam' and not subject_id:
-            raise ValueError('Для пробника выберите предмет')
+            raise ValueError('Для полного варианта выберите предмет')
         task_ids = [int(x) for x in request.form.getlist('task_ids')]
         for task_id in task_ids:
             task = owned(Task, task_id)

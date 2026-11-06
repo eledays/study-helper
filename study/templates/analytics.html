@@ -12,14 +12,14 @@
       <div class="calendar-caption"><span id="rhythm-range"></span><span class="calendar-key"><i></i> День с занятием</span></div>
     </section>
     <section class="analytics-card" aria-labelledby="exams-title">
-      <div class="card-heading"><h2 id="exams-title">Пробники</h2><select id="exam-subject" aria-label="Предмет пробников">{% for subject in subjects %}<option value="{{subject.id}}">{{subject.name|display_label}}</option>{% endfor %}</select></div>
+      <div class="card-heading"><h2 id="exams-title">Полные варианты</h2><select id="exam-subject" aria-label="Предмет полных вариантов">{% for subject in subjects %}<option value="{{subject.id}}">{{subject.name|display_label}}</option>{% endfor %}</select></div>
       <div id="exam-metrics" class="metric-grid" aria-live="polite"></div>
       <div id="exam-chart" class="analytics-chart"></div>
       <div id="exam-pending" class="chart-note" hidden><span></span>{% if g.user.id == g.student.id %}<a href="{{url_for('page',section='editing',tab='works',student=g.student.id)}}">Внести баллы →</a>{% endif %}</div>
     </section>
   </div>
   <section class="analytics-card task-analytics" aria-labelledby="tasks-title">
-    <div class="card-heading"><h2 id="tasks-title">Задания</h2><div class="card-filters"><select id="task-subject" aria-label="Предмет заданий">{% for subject in subjects %}<option value="{{subject.id}}">{{subject.name|display_label}}</option>{% endfor %}</select><select id="task-kind" aria-label="Тип работ для заданий"><option value="all">Все работы</option><option value="practice">Занятия</option><option value="exam">Пробники</option></select></div></div>
+    <div class="card-heading"><h2 id="tasks-title">Задания</h2><div class="card-filters"><select id="task-subject" aria-label="Предмет заданий">{% for subject in subjects %}<option value="{{subject.id}}">{{subject.name|display_label}}</option>{% endfor %}</select><select id="task-kind" aria-label="Тип работ для заданий"><option value="all">Все работы</option><option value="practice">Занятия</option><option value="exam">Полные варианты</option></select></div></div>
     <label class="mobile-task-select">Задание<select id="task-number"></select></label>
     <div id="task-picker" class="analytics-task-picker" role="group" aria-label="Выбор задания"></div>
     <div class="task-detail-heading"><h3 id="selected-task"></h3><span id="task-last" class="muted"></span></div>

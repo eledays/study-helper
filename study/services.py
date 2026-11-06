@@ -246,7 +246,7 @@ def analytics(s, actor_id, student_id, start=None, end=None, summaries=True, wee
             rows = by_activity.get(a.id, [])
             total = s.get(ExamTotal, a.id)
             exams.append({'id': a.id, 'day': a.day.isoformat(), 'subject': subjects[a.subject_id], 'subject_id': a.subject_id,
-                          'title': a.title or 'Пробник', 'primary': total.primary_score if total else sum(r.score for r in rows),
+                          'title': a.title or 'Полный вариант', 'primary': total.primary_score if total else sum(r.score for r in rows),
                           'maximum': total.maximum if total else sum(r.maximum for r in rows), 'secondary': a.secondary,
                           'tasks': [{'name': task_map[r.task_id].name, 'score': r.score,
                                      'max': r.maximum, 'attempted': r.attempted} for r in rows]})

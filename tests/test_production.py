@@ -137,7 +137,7 @@ def test_confirmations_survive_network_failure_and_release_writer(db):
     asyncio.run(run())
 
 
-def test_wellbeing_once_per_day_on_main_path(db):
+def test_wellbeing_after_each_record_on_main_path(db):
     async def run():
         h = BotHarness(db)
         markups = []
@@ -145,7 +145,7 @@ def test_wellbeing_once_per_day_on_main_path(db):
             await h.text('/practice'); await h.press('sub:1'); await h.press('type:practice')
             await h.next_exceptions(); await h.next_exceptions()
             markups.append(h.transport.messages[-1].reply_markup)
-        assert markups[0] is not None and markups[1] is None
+        assert all(markup is not None for markup in markups)
     asyncio.run(run())
 
 
