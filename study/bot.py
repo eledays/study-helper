@@ -175,7 +175,9 @@ def router(db, settings):
 
     @dp.message(Command('help'))
     async def help_command(message):
-        await message.answer(bot_html('welcome.help', base_url=settings.base_url.rstrip('/')), parse_mode='HTML')
+        with response_session() as s:
+            get_user(s, message.from_user)
+            await message.answer(bot_html('welcome.help', base_url=settings.base_url.rstrip('/')), parse_mode='HTML')
 
     async def show_goals(message, s, user):
         rows = progress(s, user.id, local_day(user))

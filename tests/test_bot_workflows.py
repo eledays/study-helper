@@ -124,13 +124,14 @@ def test_invalid_date_retains_draft_and_valid_date_can_follow(db, monkeypatch, i
     asyncio.run(run())
 
 
-def test_interacting_again_reactivates_notifications_after_unblocking(db):
+@pytest.mark.parametrize('command', ['/help', '/practice', '/start', '/weekly', '/goals', '/rest'])
+def test_interacting_again_reactivates_notifications_after_unblocking(db, command):
     from study.models import User
     async def run():
         with db.session.begin() as s:
             s.get(User, 1).bot_active = False
         h = BotHarness(db)
-        await h.text('/practice')
+        await h.text(command)
         with db.session() as s:
             assert s.get(User, 1).bot_active
     asyncio.run(run())
