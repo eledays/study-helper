@@ -383,9 +383,9 @@ def test_individual_tasks_use_same_defaults_and_resume_after_restart(db):
         await h.next_exceptions()
         await h.next_exceptions()
         with db.session() as s:
-            assert [(r.task_id, r.score) for r in s.scalars(select(Score).order_by(Score.task_id))] == [(1, 0), (2, 2), (3, 4)]
-            assert s.scalar(select(Activity)).kind == 'exam'
-            assert s.scalar(select(Score).where(Score.task_id == 1)).attempted is False
+            assert [(r.task_id, r.score) for r in s.scalars(select(Score).order_by(Score.task_id))] == [(2, 2), (3, 4)]
+            assert s.scalar(select(Activity)).kind == 'practice'
+            assert s.scalar(select(Score).where(Score.task_id == 1)) is None
         assert len([m for m in h.transport.messages if isinstance(m, SendMessage)]) == 1
     asyncio.run(run())
 

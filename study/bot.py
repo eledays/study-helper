@@ -48,6 +48,7 @@ def get_user(s, telegram):
         user = User(telegram_id=telegram.id, name=telegram.first_name or '')
         s.add(user); s.flush()
         ensure_defaults(s, user.id)
+    user.bot_active = True
     return user
 
 
@@ -133,10 +134,18 @@ def router(db, settings):
             sent = await message.answer(text, reply_markup=reply_markup, entities=entities)
             data.update(message_id=sent.message_id, chat_id=message.chat.id)
 
+    def task_catalog(s, data):
+        return {str(task.id): task.max_score for task in s.scalars(
+            select(Task).where(Task.subject_id == data['subject']))}
+
+    def catalog_changed(s, data):
+        return 'catalog' in data and data['catalog'] != task_catalog(s, data)
+
     def practice_tasks(s, data):
-        tasks = group_tasks(s, data['group']) if data.get('group') else list(s.scalars(select(Task).where(Task.subject_id == data['subject'])))
-        ids = set(data['all_ids'])
-        return sorted((task for task in tasks if task.id in ids), key=task_order_key)
+        # The chosen composition belongs to this draft, even if its group is edited.
+        tasks = s.scalars(select(Task).where(
+            Task.subject_id == data['subject'], Task.id.in_(data['all_ids'])))
+        return sorted(tasks, key=task_order_key)
 
     async def write_access_message(message):
         return message.write_access_allowed is not None
@@ -217,6 +226,7 @@ def router(db, settings):
         draft_set(s, user.id, data)
 
     async def type_menu(message, s, data):
+        data.setdefault('catalog', task_catalog(s, data))
         ensure_groups(s, data['subject'])
         groups = list(s.scalars(select(TaskGroup).where(TaskGroup.subject_id == data['subject']).order_by(*group_order())))
         rows = [[(group.name[:55], f"group:{data['key'][:8]}:{group.id}")] for group in groups if group.kind == 'full' or group_tasks(s, group.id)]
@@ -224,6 +234,7 @@ def router(db, settings):
         await render_step(message, data, bot_text('entry.kind'), keyboard(rows))
 
     async def full_variant_menu(message, s, data):
+        data.setdefault('catalog', task_catalog(s, data))
         ensure_groups(s, data['subject'])
         group = s.scalar(select(TaskGroup).where(
             TaskGroup.subject_id == data['subject'], TaskGroup.kind == 'full'))
@@ -240,6 +251,10 @@ def router(db, settings):
         if 'total' in data:
             activity = record_exam_total(s, user.id, user.id, data['subject'], date.fromisoformat(data['day']), data['total'], data['key'], data.get('title', ''))
         else:
+            # Also repair pre-update individual-task drafts that were classified too early.
+            if data.get('practice_flow') and data.get('part') == 'all' and not data.get('group'):
+                data['kind'] = 'practice'
+                data['values'] = {key: value for key, value in data['values'].items() if value is not None}
             activity = record_activity(s, user.id, user.id, data['subject'], date.fromisoformat(data['day']),
                 data['kind'], data['values'], data['key'], data.get('title', ''))
         if row: s.delete(row)
@@ -295,11 +310,10 @@ def router(db, settings):
             await message.answer(bot_text('entry.exam_selection'), reply_markup=keyboard(rows))
 
     async def tasks_menu(message, s, tasks, data):
+        data.setdefault('catalog', task_catalog(s, data))
         if not tasks: raise UserMessageError(bot_text('errors.add_tasks'))
         ids = set(data.get('selected', []))
         tasks = [task for task in tasks if not ids or task.id in ids]
-        if {task.id for task in tasks} == set(s.scalars(select(Task.id).where(Task.subject_id == data['subject']))):
-            data['kind'] = 'exam'
         data.update(stage='group-skipped', practice_flow=True, all_ids=[t.id for t in tasks],
                     values=full_result(tasks), skipped=[], errors=[])
         await exceptions_menu(message, s, data)
@@ -338,8 +352,13 @@ def router(db, settings):
                 return
             try:
                 if command in ('home', 'cancel'):
-                    if row: s.delete(row)
+                    if row and (command == 'cancel' or call.message.message_id == data.get('message_id')):
+                        s.delete(row)
                     await call.message.answer(bot_text('entry.cancelled')); return
+                if command in step_commands and catalog_changed(s, data):
+                    s.delete(row)
+                    await call.message.answer(bot_text('errors.catalog_changed'))
+                    return
                 if command == 'accept':
                     invite = s.get(Invite, arg)
                     if not invite or invite.expires < datetime.now(UTC).replace(tzinfo=None) or invite.teacher_id == user.id or not s.get(User, invite.teacher_id).is_teacher:
@@ -592,6 +611,10 @@ def router(db, settings):
             if row and row.data.get('replace'):
                 s.delete(row)
                 row = None
+            if row and catalog_changed(s, row.data):
+                s.delete(row)
+                await message.answer(bot_text('errors.catalog_changed'))
+                return
             if row and row.data.get('stage') == 'exam-total':
                 data = dict(row.data)
                 try:
