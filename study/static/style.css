@@ -231,4 +231,4 @@ html[data-swiping=true]{overflow-x:clip}
 .home-list .completed-card small{grid-column:1/-1;margin:0}
 .home-list .goal-card:not(.completed-card)::before{background:var(--accent);opacity:.2}
 .home-list>.empty{margin:0;padding:8px 0;text-align:left;font-size:14px}
-@media(max-width:750px){.home-list.card-board{width:calc(100% - 32px)}.home-list .board-card{padding:12px 14px;min-height:74px;gap:4px 12px}.home-list .goal-card .numbers{font-size:22px}.home-list .goal-card .numbers span{font-size:12px}}
+@media(max-width:750px){html{scrollbar-gutter:auto}.home-list.card-board{width:calc(100% - 32px)}.home-list .board-card{padding:12px 14px;min-height:74px;gap:4px 12px}.home-list .goal-card .numbers{font-size:22px}.home-list .goal-card .numbers span{font-size:12px}}

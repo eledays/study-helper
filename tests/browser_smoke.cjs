@@ -11,15 +11,17 @@ const {chromium}=require('playwright');
   await page.goto('http://127.0.0.1:18081/login');
   await page.getByRole('button',{name:'Войти как первый пользователь'}).click();
   await page.waitForURL('http://127.0.0.1:18081/');
+  const initialGoals=await page.locator('.goal-card:not(.completed-card)').count();
   await page.locator('#board-add').click();
   const goal=page.locator('dialog form');
   await goal.locator('[name="subject_id"]').selectOption({index:1});
   const groupId=await goal.locator('[name="group_id"] option:not([disabled])[data-subject]').first().getAttribute('value');
   await goal.locator('[name="group_id"]').selectOption(groupId);
+  if(await goal.locator('[name="metric"]').inputValue()!=='sets')throw Error('Full variant goal must default to variants');
   await goal.getByRole('button',{name:'Добавить',exact:true}).click();
   await page.waitForURL('**/?**');
-  if(await page.locator('.goal-card').count()!==1)throw Error('Goal was not created');
-  const fillMotion=await page.locator('.goal-card').evaluate(async node=>{
+  if(await page.locator('.goal-card:not(.completed-card)').count()!==initialGoals+1)throw Error('Goal was not created');
+  const fillMotion=await page.locator('.goal-card:not(.completed-card)').last().evaluate(async node=>{
    const animation=node.getAnimations({subtree:true}).find(item=>item.animationName==='goal-fill-in');
    if(!animation)return null;
    const original=node.style.getPropertyValue('--goal-fill');node.style.setProperty('--goal-fill','60%');
@@ -35,12 +37,13 @@ const {chromium}=require('playwright');
   });
   if(!fillMotion||fillMotion.start!==0||fillMotion.end!==1||Math.abs(fillMotion.width-fillMotion.target)>1)throw Error('Goal fill does not animate to its target: '+JSON.stringify(fillMotion));
   await page.goto('http://127.0.0.1:18081/schedule');
+  const initialSlots=await page.locator('.slot').count();
   await page.locator('#board-add').click();
   const slot=page.locator('dialog form');
   await slot.locator('[name="title"]').fill('Browser smoke slot');
   await slot.getByRole('button',{name:'Добавить',exact:true}).click();
   await page.waitForURL('**/schedule?**');
-  if(await page.locator('.slot').count()!==1)throw Error('Slot was not created');
+  if(await page.locator('.slot').count()!==initialSlots+1)throw Error('Slot was not created');
   for(const route of ['/analytics','/editing','/editing?tab=subjects','/settings']){
    const response=await page.goto('http://127.0.0.1:18081'+route);
    if(response.status()!==200)throw Error(route+' returned '+response.status());
@@ -73,7 +76,7 @@ const {chromium}=require('playwright');
      if(await page.locator('header > .profile-cards').isVisible())throw Error('Personal controls remain in mobile header');
      if(route==='/settings'&&!await page.locator('#settings-student-switch').isVisible())throw Error('Mobile settings controls missing');
     }else{
-     if(!!await page.locator('header > .profile-cards').isVisible())throw Error('Desktop controls changed');
+     if(!await page.locator('header > .profile-cards').isVisible())throw Error('Desktop account controls missing');
     }
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
     if(overflow){
@@ -152,9 +155,9 @@ const {chromium}=require('playwright');
   await page.getByRole('link',{name:'Расписание',exact:true}).click();
   await page.waitForURL('**/schedule?**');
   const scheduleWeek=await page.locator('.week-switch time').getAttribute('datetime');
-  await swipe(270,240,90,245);
+  await swipe(270,45,90,50);
   await page.waitForURL('**/analytics?**');
-  await swipe(90,240,270,245);
+  await swipe(90,45,270,50);
   await page.waitForURL('**/schedule?**');
   await page.waitForFunction(week=>document.querySelector('.week-switch time').dateTime===week,scheduleWeek);
   await page.screenshot({path:'/tmp/study-mobile-schedule.png'});

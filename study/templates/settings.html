@@ -17,6 +17,7 @@
       <button>Сохранить</button>
     </form>
     {% else %}<p class="muted">Личные настройки меняет сам ученик.</p>{% endif %}
+    {% if g.student.id == g.user.id and g.user.teacher_id %}<form action="/unlink" method="post">{{hidden()}}<button class="quiet">Отключить моего учителя</button></form>{% endif %}
     <form action="/logout" method="post" class="account-logout"><input type="hidden" name="csrf" value="{{csrf}}"><button class="danger-action">Выйти</button></form>
   </section>
   <a class="settings-plan-card" aria-label="Редактирование записей →" href="{{url_for('page',section='editing',student=g.student.id,week=week)}}">
@@ -26,7 +27,6 @@
   <section class="card"><h2>Учитель и ученики</h2>
     <form action="/invite" method="post">{{hidden()}}<button>Создать приглашение</button></form>
     {% if invite %}<p class="notice"><a href="https://t.me/{{bot_username}}?start=invite_{{invite}}">Ссылка для ученика</a> · действует 7 дней</p>{% endif %}
-    {% if g.user.teacher_id %}<form action="/unlink" method="post">{{hidden()}}<button class="quiet">Отключить моего учителя</button></form>{% endif %}
   </section>
   {% endif %}
 </div>

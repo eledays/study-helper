@@ -204,3 +204,17 @@ def test_avatar_proxy_failure_returns_unavailable_without_leaking_details(db, mo
     monkeypatch.setattr('study.web.fetch_avatar', fail)
     assert client.get('/profile/avatar').status_code == 503
     assert 'sensitive-proxy-details' not in caplog.text
+
+
+def test_student_can_disconnect_teacher_from_account_settings(client, db):
+    from study.models import User
+    assert 'action="/unlink"' in client.get('/settings').text
+    response = client.post('/unlink', data={'csrf': 'test-csrf', 'return_section': 'settings'})
+    assert response.status_code == 302
+    with db.session() as s:
+        assert s.get(User, 1).teacher_id is None
+    assert 'action="/unlink"' not in client.get('/settings').text
+    with client.session_transaction() as session:
+        session['user_id'] = 2
+    # The former teacher no longer has access to this student's plan.
+    assert client.get('/?student=1').status_code == 403
