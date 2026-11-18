@@ -34,7 +34,8 @@ def test_defaults_do_not_overwrite_custom_subjects(db):
         assert tasks['№21']==1 and tasks['№26']==4
 
 
-def test_project_math_migration_keeps_history_and_plan(tmp_path):
+@pytest.mark.parametrize('subject_name', [CATALOG['math']['label'], 'Профильная математика'])
+def test_project_math_migration_keeps_history_and_plan(tmp_path, subject_name):
     from datetime import date
     from study.db import Database
     from study.models import Activity, Goal, GoalSelection, GroupTask, Score, Slot, TaskGroup
@@ -45,7 +46,7 @@ def test_project_math_migration_keeps_history_and_plan(tmp_path):
     with database.session.begin() as s:
         s.add(User(id=1, telegram_id=101))
         s.flush()
-        subject = Subject(student_id=1, name=CATALOG['math']['label'], scale={})
+        subject = Subject(student_id=1, name=subject_name, scale={})
         s.add(subject)
         s.flush()
         old_scores = [1] * 13 + [2, 3, 2, 2, 3, 4, 4]
@@ -77,6 +78,7 @@ def test_project_math_migration_keeps_history_and_plan(tmp_path):
     Database(url)  # startup migration
     Database(url)  # idempotent restart
     with database.session() as s:
+        assert s.get(Subject, subject_id).name == subject_name
         tasks = list(s.scalars(select(Task).where(Task.subject_id == subject_id)))
         active = {t.name: t for t in tasks if t.part != 'legacy'}
         assert len(active) == 19 and len(tasks) == 22

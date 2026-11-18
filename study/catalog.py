@@ -72,12 +72,12 @@ def migrate_project_math(s):
     """
     from .models import GroupTask, TaskGroup
 
-    label = CATALOG['math']['label']
+    labels = (CATALOG['math']['label'], 'Профильная математика')
     mapping = {**{n: n for n in range(1, 6)},
                **{n: n - 1 for n in range(7, 13)},
                **{n: n - 1 for n in range(14, 17)},
                **{n: n - 1 for n in range(18, 21)}}
-    for subject in s.scalars(select(Subject).where(Subject.name == label)):
+    for subject in s.scalars(select(Subject).where(Subject.name.in_(labels))):
         tasks = list(s.scalars(select(Task).where(Task.subject_id == subject.id)))
         numbered = {int(t.name[1:]): t for t in tasks if t.name.startswith('№') and t.name[1:].isdigit()}
         # Only migrate untouched draft catalogs. A customized catalog needs a
