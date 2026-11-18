@@ -302,7 +302,7 @@ def create_app(settings=None):
                     rows.sort(key=lambda row: positions[row.task_id])
                 record_totals = {r.activity_id: r for r in g.db.scalars(select(ExamTotal).where(ExamTotal.activity_id.in_(ids)))}
 
-        html = render_template('plan.html' if section in ('goals','schedule') else f'{section}.html', section=section, subjects=subjects, tasks=tasks,
+        html = render_template('plan.html' if section in ('goals','schedule') else f'{section}.html', section=section, subjects=subjects, tasks=[t for t in tasks if t.part != 'legacy'],
                                slots=slots, goals=goals, completed=completed, week=week, today=today, analytics_end=analytics_end, timedelta=timedelta,
                                invite=invite, data=data, tab=tab, records=records, record_scores=record_scores, record_totals=record_totals, groups=groups, memberships=memberships, catalog=CATALOG,
                                catalog_by_name={item["label"]: item for item in CATALOG.values()},
@@ -462,12 +462,12 @@ def create_app(settings=None):
             task_ids = sorted(set(map(int, request.form.getlist('task_ids'))))
             if not task_ids:
                 raise ValueError('Выберите хотя бы одно задание')
-            valid = set(g.db.scalars(select(Task.id).where(Task.subject_id == subject.id)))
+            valid = set(g.db.scalars(select(Task.id).where(Task.subject_id == subject.id, Task.part != 'legacy')))
             if not set(task_ids) <= valid:
                 raise ValueError('Выберите задания выбранного предмета')
         if kind == 'task':
             task = owned(Task, task_id)
-            if task.subject_id != subject.id:
+            if task.subject_id != subject.id or task.part == 'legacy':
                 raise ValueError('Выберите задание выбранного предмета')
         else:
             task_id = None
@@ -507,7 +507,7 @@ def create_app(settings=None):
         task_ids = [int(x) for x in request.form.getlist('task_ids')]
         for task_id in task_ids:
             task = owned(Task, task_id)
-            if task.subject_id != subject_id:
+            if task.subject_id != subject_id or task.part == 'legacy':
                 raise ValueError('Задания должны относиться к выбранному предмету')
         series = uuid4().hex
         for n in range(weeks):

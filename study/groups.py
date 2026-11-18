@@ -1,6 +1,7 @@
 """Independent tasks with overlapping groups; part is retained for old databases"""
 from sqlalchemy import select, case
 from .models import Task, TaskGroup, GroupTask
+from .presentation import task_order_key
 
 
 def ensure_groups(s, subject_id):
@@ -18,7 +19,7 @@ def ensure_groups(s, subject_id):
             for task in s.scalars(select(Task).where(Task.subject_id == subject_id, Task.part == kind)):
                 s.add(GroupTask(group_id=group.id, task_id=task.id))
         if kind == 'full':
-            ids = set(s.scalars(select(Task.id).where(Task.subject_id == subject_id)))
+            ids = set(s.scalars(select(Task.id).where(Task.subject_id == subject_id, Task.part != 'legacy')))
             existing = {m.task_id: m for m in s.scalars(select(GroupTask).where(GroupTask.group_id == group.id))}
             for task_id in ids - existing.keys():
                 s.add(GroupTask(group_id=group.id, task_id=task_id))
@@ -34,9 +35,11 @@ def group_order():
 def group_tasks(s, group_id):
     group = s.get(TaskGroup, group_id)
     if group and group.kind == 'full':
-        return list(s.scalars(select(Task).where(Task.subject_id == group.subject_id).order_by(Task.id)))
-    return list(s.scalars(select(Task).join(GroupTask, Task.id == GroupTask.task_id)
-                         .where(GroupTask.group_id == group_id).order_by(Task.id)))
+        return sorted(s.scalars(select(Task).where(Task.subject_id == group.subject_id, Task.part != 'legacy')),
+                      key=task_order_key)
+    return sorted(s.scalars(select(Task).join(GroupTask, Task.id == GroupTask.task_id)
+                            .where(GroupTask.group_id == group_id)),
+                  key=task_order_key)
 
 
 def standard_tasks(s, subject_id, kind):
@@ -62,7 +65,7 @@ def save_group(s, subject_id, name, task_ids, group=None):
     ids = set(map(int, task_ids))
     if not name or not ids:
         raise ValueError('Укажите название и выберите задания')
-    valid = set(s.scalars(select(Task.id).where(Task.subject_id == subject_id)))
+    valid = set(s.scalars(select(Task.id).where(Task.subject_id == subject_id, Task.part != 'legacy')))
     if not ids <= valid:
         raise ValueError('Выберите задания этого предмета')
     duplicate = s.scalar(select(TaskGroup).where(TaskGroup.subject_id == subject_id, TaskGroup.name == name))

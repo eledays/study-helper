@@ -52,7 +52,9 @@ class Database:
         from sqlalchemy import select, update
         from .models import Subject, Daily, Activity
         from .groups import ensure_groups
+        from .catalog import migrate_project_math
         with self.session.begin() as s:
+            migrate_project_math(s)
             s.execute(update(Daily).where(Daily.status.in_(['missed', 'unknown'])).values(
                 status='rest'))
             s.execute(update(Daily).where(Daily.status == 'rest',

@@ -53,7 +53,8 @@ def record_activity(s, actor_id, student_id, subject_id, day, kind, values, requ
         if existing.student_id != student_id:
             raise PermissionError(bot_text('errors.no_access'))
         return existing
-    tasks = list(s.scalars(select(Task).where(Task.subject_id == subject_id).order_by(Task.id)))
+    tasks = sorted(s.scalars(select(Task).where(Task.subject_id == subject_id, Task.part != 'legacy')),
+                   key=task_order_key)
     task_map = {t.id: t for t in tasks}
     normalized = {int(k): v for k, v in values.items()}
     if any(k not in task_map for k in normalized):
@@ -104,7 +105,7 @@ def record_exam_total(s, actor_id, student_id, subject_id, day, primary, request
         if existing.student_id != student_id:
             raise PermissionError(bot_text('errors.no_access'))
         return existing
-    maximum = sum(t.max_score for t in s.scalars(select(Task).where(Task.subject_id == subject_id)))
+    maximum = sum(t.max_score for t in s.scalars(select(Task).where(Task.subject_id == subject_id, Task.part != 'legacy')))
     if not maximum or not 0 <= primary <= maximum:
         raise UserMessageError(bot_text('errors.primary_range', maximum=maximum))
     activity = Activity(student_id=student_id, subject_id=subject_id, day=day, kind='exam',

@@ -136,7 +136,7 @@ def router(db, settings):
 
     def task_catalog(s, data):
         return {str(task.id): task.max_score for task in s.scalars(
-            select(Task).where(Task.subject_id == data['subject']))}
+            select(Task).where(Task.subject_id == data['subject'], Task.part != 'legacy'))}
 
     def catalog_changed(s, data):
         return 'catalog' in data and data['catalog'] != task_catalog(s, data)
@@ -144,7 +144,7 @@ def router(db, settings):
     def practice_tasks(s, data):
         # The chosen composition belongs to this draft, even if its group is edited.
         tasks = s.scalars(select(Task).where(
-            Task.subject_id == data['subject'], Task.id.in_(data['all_ids'])))
+            Task.subject_id == data['subject'], Task.part != 'legacy', Task.id.in_(data['all_ids'])))
         return sorted(tasks, key=task_order_key)
 
     async def write_access_message(message):
@@ -398,8 +398,11 @@ def router(db, settings):
                     if slot.kind == 'exam':
                         await full_variant_menu(call.message, s, data)
                     elif slot.task_ids:
-                        data.update(stage='select',selected=list(slot.task_ids),part='all')
-                        tasks=list(s.scalars(select(Task).where(Task.subject_id==slot.subject_id).order_by(Task.id)))
+                        tasks = sorted(s.scalars(select(Task).where(
+                            Task.subject_id == slot.subject_id, Task.part != 'legacy')),
+                            key=task_order_key)
+                        active_ids = {task.id for task in tasks}
+                        data.update(stage='select', selected=[task_id for task_id in slot.task_ids if task_id in active_ids], part='all')
                         await tasks_menu(call.message,s,tasks,data)
                     else:
                         await type_menu(call.message, s, data)
@@ -463,7 +466,7 @@ def router(db, settings):
                     data['stage'] = 'date'
                     await render_step(call.message, data, bot_text('entry.date'))
                 elif command == 'type' and data.get('stage') == 'type':
-                    tasks = list(s.scalars(select(Task).where(Task.subject_id == data['subject']).order_by(Task.id)))
+                    tasks = sorted(s.scalars(select(Task).where(Task.subject_id == data['subject'], Task.part != 'legacy')), key=task_order_key)
                     if arg == 'test':
                         ensure_groups(s, data['subject'])
                         group = s.scalar(select(TaskGroup).where(TaskGroup.subject_id == data['subject'], TaskGroup.kind == 'test'))
@@ -482,7 +485,7 @@ def router(db, settings):
                     if not group or group.subject_id != data['subject']: raise UserMessageError(bot_text('errors.group_not_found'))
                     tasks = group_tasks(s, group.id)
                     if not tasks: raise UserMessageError(bot_text('errors.empty_group'))
-                    all_ids = set(s.scalars(select(Task.id).where(Task.subject_id == data['subject'])))
+                    all_ids = set(s.scalars(select(Task.id).where(Task.subject_id == data['subject'], Task.part != 'legacy')))
                     is_full = {task.id for task in tasks} == all_ids
                     kind = 'exam' if is_full else 'test' if group.kind == 'test' else 'practice'
                     data.update(stage='group-skipped', practice_flow=True, kind=kind, group=group.id,
@@ -536,12 +539,12 @@ def router(db, settings):
                         await score_next(call.message, s, user, data)
                 elif command == 'exam-total' and data.get('stage') == 'exam-ready':
                     if arg != data['key'][:8]: return
-                    maximum = sum(t.max_score for t in s.scalars(select(Task).where(Task.subject_id == data['subject'])))
+                    maximum = sum(t.max_score for t in s.scalars(select(Task).where(Task.subject_id == data['subject'], Task.part != 'legacy')))
                     data.update(stage='exam-total', total_maximum=maximum)
                     await render_step(call.message, data, bot_text('entry.exam_total', maximum=maximum))
                 elif command in ('exam-bulk', 'exam-select') and data.get('stage') == 'exam-ready':
                     if arg != data['key'][:8]: return
-                    tasks = list(s.scalars(select(Task).where(Task.subject_id == data['subject']).order_by(Task.id)))
+                    tasks = sorted(s.scalars(select(Task).where(Task.subject_id == data['subject'], Task.part != 'legacy')), key=task_order_key)
                     if command == 'exam-bulk':
                         data['stage'] = 'exam-bulk'
                         order = ', '.join(bot_text('format.bulk_task', task_name=t.name, maximum=t.max_score) for t in tasks)
@@ -552,7 +555,7 @@ def router(db, settings):
                 elif command == 'exam-toggle' and data.get('stage') == 'exam-select':
                     nonce, task_text = arg.split(':')
                     if nonce != data['key'][:8]: return
-                    tasks = list(s.scalars(select(Task).where(Task.subject_id == data['subject']).order_by(Task.id)))
+                    tasks = sorted(s.scalars(select(Task).where(Task.subject_id == data['subject'], Task.part != 'legacy')), key=task_order_key)
                     task_id = int(task_text)
                     if task_id not in {t.id for t in tasks}: raise UserMessageError(bot_text('errors.task_not_found'))
                     chosen = list(data['selected'])
@@ -562,13 +565,13 @@ def router(db, settings):
                     await exam_selection(call.message, tasks, data, edit=True)
                 elif command == 'exam-selected' and data.get('stage') == 'exam-select':
                     if arg != data['key'][:8]: return
-                    tasks = list(s.scalars(select(Task).where(Task.subject_id == data['subject']).order_by(Task.id)))
+                    tasks = sorted(s.scalars(select(Task).where(Task.subject_id == data['subject'], Task.part != 'legacy')), key=task_order_key)
                     chosen = set(data['selected'])
                     data.update(values={str(t.id): (1 if t.max_score == 1 else 0) if t.id in chosen else None for t in tasks},
                                 selected=[t.id for t in tasks if t.id in chosen and t.max_score > 1], index=0)
                     await score_next(call.message, s, user, data)
                 elif command == 'toggle' and data.get('stage') == 'select':
-                    tasks = list(s.scalars(select(Task).where(Task.subject_id == data['subject']).order_by(Task.id)))
+                    tasks = sorted(s.scalars(select(Task).where(Task.subject_id == data['subject'], Task.part != 'legacy')), key=task_order_key)
                     if data.get('part') == 'test': tasks = [t for t in tasks if t.part == 'test']
                     nonce, arg = arg.split(':')
                     if nonce != data['key'][:8]: return
@@ -628,7 +631,7 @@ def router(db, settings):
                 await save_result(message, s, user, data)
             elif row and row.data.get('stage') == 'exam-bulk':
                 data = dict(row.data)
-                tasks = list(s.scalars(select(Task).where(Task.subject_id == data['subject']).order_by(Task.id)))
+                tasks = sorted(s.scalars(select(Task).where(Task.subject_id == data['subject'], Task.part != 'legacy')), key=task_order_key)
                 try:
                     data['values'] = parse_points(message.text or '', tasks)
                 except ValueError as error:
