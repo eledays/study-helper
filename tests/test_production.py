@@ -88,7 +88,13 @@ def test_invalid_return_week_rolls_back(client, db):
         assert s.scalar(select(Subject).where(Subject.name == 'Do not commit')) is None
 
 
-def test_history_pagination_and_server_period(client, db):
+def test_history_pagination_and_server_period(client, db, monkeypatch):
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 15, 12, tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setattr('study.web.datetime', FixedDatetime)
     with db.session.begin() as s:
         for n in range(55):
             s.add(Activity(student_id=1, subject_id=1, day=date(2026, 10, 12),
